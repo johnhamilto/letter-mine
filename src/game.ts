@@ -309,7 +309,7 @@ export class Game {
 
   async loadDictionary() {
     try {
-      const resp = await fetch("/dictionary.json")
+      const resp = await fetch(`${import.meta.env.BASE_URL}dictionary.json`)
       const data = (await resp.json()) as Record<string, DictionaryEntry>
       this.dictionary = data
       const words = new Set(Object.keys(data))
