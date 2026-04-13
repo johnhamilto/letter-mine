@@ -13,6 +13,9 @@ interface SubmitResult {
   submittedLetters: ShelfLetter[] // letters that were on shelf (for scoring)
 }
 
+const ERROR_FLASH_MS = 500
+const TOOLTIP_MS = 1500
+
 export class Shelf {
   letters: ShelfLetter[] = []
   maxSlots: number
@@ -31,6 +34,10 @@ export class Shelf {
 
   submittedWords: string[] = []
   onSubmit: (() => void) | null = null
+
+  // Error flash state
+  private errorTime = 0
+  private errorMessage = ''
 
   // Submit button layout
   private btnX = 0
@@ -92,15 +99,26 @@ export class Shelf {
     return screenX >= r.x && screenX <= r.x + r.w && screenY >= r.y && screenY <= r.y + r.h
   }
 
+  private flashError(message: string) {
+    this.errorTime = performance.now()
+    this.errorMessage = message
+  }
+
   placeLetter(char: string, isUpper: boolean): boolean {
-    if (this.letters.length >= this.maxSlots) return false
+    if (this.letters.length >= this.maxSlots) {
+      this.flashError(`${this.maxSlots} letters max`)
+      return false
+    }
     this.letters.push({ char, isUpper })
     this.validate()
     return true
   }
 
   insertLetter(index: number, char: string, isUpper: boolean): boolean {
-    if (this.letters.length >= this.maxSlots) return false
+    if (this.letters.length >= this.maxSlots) {
+      this.flashError(`${this.maxSlots} letters max`)
+      return false
+    }
     this.letters.splice(index, 0, { char, isUpper })
     this.validate()
     return true
@@ -154,6 +172,7 @@ export class Shelf {
     const submittedLetters = [...this.letters]
 
     if (this.letters.length < 4) {
+      this.flashError('Too short (4 letters min)')
       return { valid: false, word, letters: [], submittedLetters: [] }
     }
 
@@ -216,6 +235,9 @@ export class Shelf {
 
   render(ctx: CanvasRenderingContext2D) {
     const r = this.rect
+    const now = performance.now()
+    const errorElapsed = now - this.errorTime
+    const isShaking = errorElapsed < ERROR_FLASH_MS
 
     // Container
     ctx.fillStyle = COLORS.shelfBg
@@ -223,7 +245,7 @@ export class Shelf {
     ctx.roundRect(r.x, r.y, r.w, r.h, SHELF.cornerRadius)
     ctx.fill()
 
-    ctx.strokeStyle = COLORS.shelf
+    ctx.strokeStyle = isShaking ? COLORS.error : COLORS.shelf
     ctx.lineWidth = SHELF.borderWidth
     ctx.beginPath()
     ctx.roundRect(r.x, r.y, r.w, r.h, SHELF.cornerRadius)
@@ -249,7 +271,7 @@ export class Shelf {
       ctx.textBaseline = 'middle'
       ctx.fillText('Submit', this.btnX + this.btnW / 2, this.btnY + this.btnH / 2)
 
-      // Letters — green if current word is already discovered
+      // Letters — green if discovered, red if shaking
       const isDiscovered =
         this.discoveredWords !== null &&
         this.letters.length >= 4 &&
@@ -264,22 +286,39 @@ export class Shelf {
       for (let i = 0; i < this.letters.length; i++) {
         const sl = this.letters[i]!
         const pos = this.slotPosition(i)
-        if (isDiscovered) {
+
+        // Shake offset
+        let shakeX = 0
+        if (isShaking) {
+          const t = errorElapsed / ERROR_FLASH_MS
+          shakeX = Math.sin(t * Math.PI * 6) * 4 * (1 - t)
+        }
+
+        if (isShaking) {
+          ctx.fillStyle = COLORS.error
+        } else if (isDiscovered) {
           ctx.fillStyle = COLORS.valid
         } else {
           ctx.fillStyle = sl.isUpper ? COLORS.inkDark : COLORS.ink
         }
-        ctx.fillText(sl.char, pos.x, pos.y)
+        ctx.fillText(sl.char, pos.x + shakeX, pos.y)
       }
     }
 
-    // Letter count hint (when building but below minimum)
-    if (this.letters.length > 0 && this.letters.length < 4) {
-      ctx.fillStyle = COLORS.faded
-      ctx.font = `13px ${FONT_FAMILY}`
+    // Error tooltip
+    if (this.errorMessage && errorElapsed < TOOLTIP_MS) {
+      const tooltipAlpha =
+        errorElapsed < ERROR_FLASH_MS
+          ? 1
+          : 1 - (errorElapsed - ERROR_FLASH_MS) / (TOOLTIP_MS - ERROR_FLASH_MS)
+      ctx.save()
+      ctx.globalAlpha = Math.max(0, tooltipAlpha)
+      ctx.fillStyle = COLORS.error
+      ctx.font = `bold 13px ${FONT_FAMILY}`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'alphabetic'
-      ctx.fillText(`${this.letters.length} / 4 min`, r.x + r.w / 2, r.y + r.h + 18)
+      ctx.fillText(this.errorMessage, r.x + r.w / 2, r.y + r.h + 18)
+      ctx.restore()
     }
 
     // Recent submissions
