@@ -1,22 +1,17 @@
-import type RAPIER_NS from "@dimforge/rapier2d-compat"
-import { createLetterBody } from "./physics"
-import { MiningPrompt } from "./mining"
-import { DragController } from "./drag"
-import { Shelf } from "./shelf"
-import { LetterRenderer } from "./render"
-import { Economy } from "./economy"
-import { Hud } from "./hud"
-import { loadState, startAutoSave, type GameState } from "./state"
-import {
-  getUpgradeValue,
-  getUpgradeCost,
-  milestoneReached,
-  UNIQUE_UPGRADES,
-} from "./upgrades"
-import { Shop } from "./shop"
-import { saveState } from "./state"
-import { createDebugUI } from "./debug"
-import { MINING_WORDS } from "./data/words"
+import type RAPIER_NS from '@dimforge/rapier2d-compat'
+import { createLetterBody } from './physics'
+import { MiningPrompt } from './mining'
+import { DragController } from './drag'
+import { Shelf } from './shelf'
+import { LetterRenderer } from './render'
+import { Economy } from './economy'
+import { Hud } from './hud'
+import { loadState, startAutoSave, type GameState } from './state'
+import { getUpgradeValue, getUpgradeCost, milestoneReached, UNIQUE_UPGRADES } from './upgrades'
+import { Shop } from './shop'
+import { saveState } from './state'
+import { createDevPanel } from './debug'
+import { MINING_WORDS } from './data/words'
 import {
   SCALE,
   COLORS,
@@ -26,7 +21,7 @@ import {
   FOREGROUND_MS,
   BASIN,
   FONT_FAMILY,
-} from "./constants"
+} from './constants'
 import type {
   GlyphData,
   LetterBody,
@@ -34,7 +29,7 @@ import type {
   MilestoneName,
   UpgradeTrack,
   UniqueUpgrade,
-} from "./types"
+} from './types'
 
 export class Game {
   canvas: HTMLCanvasElement
@@ -62,8 +57,12 @@ export class Game {
 
   // Upgrade & progression state
   upgradeLevels: Record<UpgradeTrack, number> = {
-    basinCapacity: 0, shelfWidth: 0, apprenticeShelfWidth: 0,
-    miningQuality: 0, autoMiner: 0, inkMultiplier: 0,
+    basinCapacity: 0,
+    shelfWidth: 0,
+    apprenticeShelfWidth: 0,
+    miningQuality: 0,
+    autoMiner: 0,
+    inkMultiplier: 0,
   }
   unlockedUniques: Set<UniqueUpgrade> = new Set()
   highestMilestone: MilestoneName | null = null
@@ -82,8 +81,8 @@ export class Game {
     this.RAPIER = RAPIER
     this.glyphs = glyphs
 
-    const ctx = canvas.getContext("2d")
-    if (!ctx) throw new Error("No 2d context")
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('No 2d context')
     this.ctx = ctx
 
     // Physics world
@@ -116,7 +115,7 @@ export class Game {
     if (reached) this.highestMilestone = reached
 
     // Shelf — width from upgrade level
-    const shelfSlots = getUpgradeValue("shelfWidth", this.upgradeLevels.shelfWidth)
+    const shelfSlots = getUpgradeValue('shelfWidth', this.upgradeLevels.shelfWidth)
     this.shelf = new Shelf(shelfSlots)
     this.shelf.onSubmit = () => this.submitShelf()
     if (saved) {
@@ -135,28 +134,70 @@ export class Game {
     })
 
     this.resize()
-    window.addEventListener("resize", () => this.resize())
+    window.addEventListener('resize', () => this.resize())
 
-    // Debug UI
-    createDebugUI({
-      onToggleGlyphs: () => {
-        this.renderer.showGlyphs = !this.renderer.showGlyphs
-        return this.renderer.showGlyphs
-      },
-      onToggleColliders: () => {
-        this.renderer.showColliders = !this.renderer.showColliders
-        return this.renderer.showColliders
-      },
-      onSpawn100: () => {
-        const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        for (let i = 0; i < 100; i++) {
-          const char = chars[Math.floor(Math.random() * chars.length)]!
-          const x = Math.random() * this.width * 0.8 + this.width * 0.1
-          const y = Math.random() * this.height * 0.3
-          this.spawnLetter(char, x, y)
-        }
-      },
-    })
+    // Dev panel (only in development)
+    if (import.meta.env.DEV) {
+      createDevPanel({
+        onToggleGlyphs: () => {
+          this.renderer.showGlyphs = !this.renderer.showGlyphs
+          return this.renderer.showGlyphs
+        },
+        onToggleColliders: () => {
+          this.renderer.showColliders = !this.renderer.showColliders
+          return this.renderer.showColliders
+        },
+        onSpawnLetters: (count) => {
+          const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+          for (let i = 0; i < count; i++) {
+            const char = chars[Math.floor(Math.random() * chars.length)]!
+            const x = Math.random() * this.width * 0.8 + this.width * 0.1
+            const y = Math.random() * this.height * 0.3
+            this.spawnLetter(char, x, y)
+          }
+        },
+        onAddInk: (amount) => {
+          this.economy.ink += amount
+          this.economy.totalInkEarned += amount
+          this.checkMilestones()
+        },
+        onDiscoverWords: (count) => {
+          const allWords = Object.keys(this.dictionary)
+          const undiscovered = allWords.filter((w) => !this.economy.discoveredWords.has(w))
+          // Shuffle and pick N
+          for (let i = undiscovered.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+            ;[undiscovered[i], undiscovered[j]] = [undiscovered[j]!, undiscovered[i]!]
+          }
+          const batch = undiscovered.slice(0, count)
+          for (const word of batch) {
+            this.economy.discoveredWords.add(word)
+            const entry = this.dictionary[word]
+            if (entry) this.economy.discoveredRoots.add(entry.root)
+          }
+        },
+        onClearDiscoveries: () => {
+          this.economy.discoveredWords.clear()
+          this.economy.discoveredRoots.clear()
+          this.economy.streak = 0
+          this.shelf.submittedWords = []
+        },
+        onResetState: () => {
+          localStorage.removeItem('letter-mine-save')
+          location.reload()
+        },
+        onForceSave: () => {
+          saveState(this.buildSaveState())
+        },
+        getStats: () => ({
+          ink: this.economy.ink,
+          totalInk: this.economy.totalInkEarned,
+          discovered: this.economy.discoveredWords.size,
+          letters: this.letters.length,
+          streak: this.economy.streak,
+        }),
+      })
+    }
 
     // Mining prompt
     this.mining = new MiningPrompt({
@@ -198,9 +239,9 @@ export class Game {
     )
 
     // Keyboard
-    window.addEventListener("keydown", (e) => {
+    window.addEventListener('keydown', (e) => {
       // Shop toggle
-      if (e.key === "Escape" && this.shopOpen) {
+      if (e.key === 'Escape' && this.shopOpen) {
         this.closeShop()
         return
       }
@@ -208,19 +249,19 @@ export class Game {
       // Block game input when shop is open
       if (this.shopOpen) return
 
-      if (e.key === "Enter") {
+      if (e.key === 'Enter') {
         this.submitShelf()
-      } else if (e.key === "Escape") {
+      } else if (e.key === 'Escape') {
         this.dumpShelfLetters()
       }
     })
 
     // DOM shop button
-    this.shopBtn = document.createElement("button")
-    this.shopBtn.className = "shop-btn"
-    this.shopBtn.textContent = "Shop"
-    this.shopBtn.addEventListener("click", () => this.openShop())
-    if (this.shelf.submittedWords.length > 0) this.shopBtn.style.display = "block"
+    this.shopBtn = document.createElement('button')
+    this.shopBtn.className = 'shop-btn'
+    this.shopBtn.textContent = 'Shop'
+    this.shopBtn.addEventListener('click', () => this.openShop())
+    if (this.shelf.submittedWords.length > 0) this.shopBtn.style.display = 'block'
     document.body.appendChild(this.shopBtn)
 
     this.loadDictionary()
@@ -254,13 +295,8 @@ export class Game {
 
     // Floor (tracked separately for drain mechanic)
     if (!this.isDraining) {
-      const floor = this.world.createRigidBody(
-        R.RigidBodyDesc.fixed().setTranslation(0, h),
-      )
-      this.world.createCollider(
-        R.ColliderDesc.halfspace(new R.Vector2(0, -1)),
-        floor,
-      )
+      const floor = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0, h))
+      this.world.createCollider(R.ColliderDesc.halfspace(new R.Vector2(0, -1)), floor)
       this.wallBodies.push(floor)
       this.floorBody = floor
     }
@@ -276,10 +312,7 @@ export class Game {
       const body = this.world.createRigidBody(
         R.RigidBodyDesc.fixed().setTranslation(wall.x, wall.y),
       )
-      this.world.createCollider(
-        R.ColliderDesc.halfspace(new R.Vector2(wall.nx, wall.ny)),
-        body,
-      )
+      this.world.createCollider(R.ColliderDesc.halfspace(new R.Vector2(wall.nx, wall.ny)), body)
       this.wallBodies.push(body)
     }
   }
@@ -297,13 +330,8 @@ export class Game {
     if (this.floorBody) return
     const R = this.RAPIER
     const h = this.height / SCALE
-    const floor = this.world.createRigidBody(
-      R.RigidBodyDesc.fixed().setTranslation(0, h),
-    )
-    this.world.createCollider(
-      R.ColliderDesc.halfspace(new R.Vector2(0, -1)),
-      floor,
-    )
+    const floor = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0, h))
+    this.world.createCollider(R.ColliderDesc.halfspace(new R.Vector2(0, -1)), floor)
     this.wallBodies.push(floor)
     this.floorBody = floor
   }
@@ -318,7 +346,7 @@ export class Game {
       this.shelf.discoveredWords = this.economy.discoveredWords
       console.log(`Dictionary loaded: ${words.size} words`)
     } catch {
-      console.warn("Dictionary not found — shelf validation disabled")
+      console.warn('Dictionary not found — shelf validation disabled')
     }
   }
 
@@ -338,7 +366,7 @@ export class Game {
     if (reached && reached !== this.highestMilestone) {
       this.highestMilestone = reached
       this.hud.showMilestone(reached)
-      this.shopBtn.style.display = "block"
+      this.shopBtn.style.display = 'block'
     }
   }
 
@@ -355,7 +383,7 @@ export class Game {
   }
 
   getBasinCapacity(): number {
-    return getUpgradeValue("basinCapacity", this.upgradeLevels.basinCapacity)
+    return getUpgradeValue('basinCapacity', this.upgradeLevels.basinCapacity)
   }
 
   buyTieredUpgrade(track: UpgradeTrack) {
@@ -380,10 +408,10 @@ export class Game {
   applyUpgrade(track: UpgradeTrack) {
     const value = getUpgradeValue(track, this.upgradeLevels[track])
     switch (track) {
-      case "basinCapacity":
+      case 'basinCapacity':
         // Overflow uses getBasinCapacity() — auto-updates
         break
-      case "shelfWidth":
+      case 'shelfWidth':
         this.shelf.maxSlots = value
         break
     }
@@ -395,17 +423,13 @@ export class Game {
     if (result.valid) {
       const normalized = result.word.toLowerCase()
       const entry = this.dictionary[normalized]
-      const score = this.economy.scoreWord(
-        result.word,
-        result.submittedLetters,
-        entry,
-      )
+      const score = this.economy.scoreWord(result.word, result.submittedLetters, entry)
       console.log(
         `Submitted: ${result.word} → +${score.finalInk} Ink`,
-        score.bonuses.map((b) => b.label).join(", "),
+        score.bonuses.map((b) => b.label).join(', '),
       )
       this.checkMilestones()
-      this.shopBtn.style.display = "block"
+      this.shopBtn.style.display = 'block'
     } else {
       this.economy.resetStreak()
       this.dumpShelfLetters(result.letters)
@@ -441,13 +465,7 @@ export class Game {
     for (const s of this.spawnQueue) {
       const glyph = this.glyphs[s.char]
       if (!glyph) continue
-      const letter = createLetterBody(
-        this.RAPIER,
-        this.world,
-        glyph,
-        s.x / SCALE,
-        s.y / SCALE,
-      )
+      const letter = createLetterBody(this.RAPIER, this.world, glyph, s.x / SCALE, s.y / SCALE)
       if (letter) {
         this.letters.push(letter)
         if (markForeground) {
@@ -535,28 +553,28 @@ export class Game {
     // Top edge
     const topGrad = ctx.createLinearGradient(0, 0, 0, spread)
     topGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
-    topGrad.addColorStop(1, "rgba(192, 57, 43, 0)")
+    topGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
     ctx.fillStyle = topGrad
     ctx.fillRect(0, 0, this.width, spread)
 
     // Bottom edge
     const botGrad = ctx.createLinearGradient(0, this.height, 0, this.height - spread)
     botGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
-    botGrad.addColorStop(1, "rgba(192, 57, 43, 0)")
+    botGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
     ctx.fillStyle = botGrad
     ctx.fillRect(0, this.height - spread, this.width, spread)
 
     // Left edge
     const leftGrad = ctx.createLinearGradient(0, 0, spread, 0)
     leftGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
-    leftGrad.addColorStop(1, "rgba(192, 57, 43, 0)")
+    leftGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
     ctx.fillStyle = leftGrad
     ctx.fillRect(0, 0, spread, this.height)
 
     // Right edge
     const rightGrad = ctx.createLinearGradient(this.width, 0, this.width - spread, 0)
     rightGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
-    rightGrad.addColorStop(1, "rgba(192, 57, 43, 0)")
+    rightGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
     ctx.fillStyle = rightGrad
     ctx.fillRect(this.width - spread, 0, spread, this.height)
 
@@ -596,7 +614,7 @@ export class Game {
     const barX = bx + barPad
     const barY = by + boxHeight - barHeight - 10
 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.08)"
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)'
     ctx.beginPath()
     ctx.roundRect(barX, barY, barWidth, barHeight, 4)
     ctx.fill()
@@ -609,27 +627,23 @@ export class Game {
 
     ctx.fillStyle = COLORS.ink
     ctx.font = `bold 11px ${FONT_FAMILY}`
-    ctx.textAlign = "center"
-    ctx.textBaseline = "middle"
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
     ctx.fillText(`${count} / ${max}`, barX + barWidth / 2, barY + barHeight / 2)
 
     // Warning / countdown message
     if (this.overflowCountdown > 0) {
       ctx.fillStyle = COLORS.error
       ctx.font = `bold 18px ${FONT_FAMILY}`
-      ctx.textAlign = "center"
-      ctx.textBaseline = "alphabetic"
-      ctx.fillText(
-        `OVERFLOW IN ${Math.ceil(this.overflowCountdown)}`,
-        bx + boxWidth / 2,
-        barY - 8,
-      )
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'alphabetic'
+      ctx.fillText(`OVERFLOW IN ${Math.ceil(this.overflowCountdown)}`, bx + boxWidth / 2, barY - 8)
     } else if (this.isDraining) {
       ctx.fillStyle = COLORS.error
       ctx.font = `bold 18px ${FONT_FAMILY}`
-      ctx.textAlign = "center"
-      ctx.textBaseline = "alphabetic"
-      ctx.fillText("DRAINING...", bx + boxWidth / 2, barY - 8)
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'alphabetic'
+      ctx.fillText('DRAINING...', bx + boxWidth / 2, barY - 8)
     }
   }
 
@@ -718,6 +732,5 @@ export class Game {
 
     // Economy HUD (topmost layer)
     this.hud.render(ctx, this.width, this.height)
-
   }
 }

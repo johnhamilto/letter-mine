@@ -1,0 +1,3 @@
+#!/bin/sh
+# Runs in the new worktree after creation.
+bun install

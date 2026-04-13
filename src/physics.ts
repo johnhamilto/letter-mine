@@ -1,6 +1,6 @@
-import type RAPIER_NS from "@dimforge/rapier2d-compat"
-import { GLYPH_TO_PHYSICS, LOWERCASE_SCALE, UPPERCASE_SCALE } from "./constants"
-import type { GlyphData, LetterBody } from "./types"
+import type RAPIER_NS from '@dimforge/rapier2d-compat'
+import { GLYPH_TO_PHYSICS, LOWERCASE_SCALE, UPPERCASE_SCALE } from './constants'
+import type { GlyphData, LetterBody } from './types'
 
 export type { LetterBody }
 

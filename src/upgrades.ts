@@ -1,6 +1,6 @@
 /** Upgrade definitions — static data and pure lookup functions. */
 
-import type { MilestoneName, UniqueUpgrade, UpgradeTrack } from "./types"
+import type { MilestoneName, UniqueUpgrade, UpgradeTrack } from './types'
 
 // ── Tiered upgrades ──
 
@@ -15,52 +15,52 @@ export interface TieredUpgradeDef {
 
 export const TIERED_UPGRADES: readonly TieredUpgradeDef[] = [
   {
-    track: "basinCapacity",
-    name: "Basin Capacity",
-    description: "Max letters in the basin",
+    track: 'basinCapacity',
+    name: 'Basin Capacity',
+    description: 'Max letters in the basin',
     values: [50, 75, 100, 150, 200, 300, 500],
     costs: [300, 800, 2000, 5000, 15000, 40000, 100000],
-    requiredMilestone: "apprentice",
+    requiredMilestone: 'apprentice',
   },
   {
-    track: "shelfWidth",
-    name: "Shelf Width",
-    description: "Max letters on the shelf",
+    track: 'shelfWidth',
+    name: 'Shelf Width',
+    description: 'Max letters on the shelf',
     values: [4, 5, 6, 7, 8, 9, 11, 15, 22, 45],
     costs: [200, 400, 800, 1500, 3000, 6000, 15000, 40000, 150000, 500000],
-    requiredMilestone: "apprentice",
+    requiredMilestone: 'apprentice',
   },
   {
-    track: "miningQuality",
-    name: "Mining Quality",
-    description: "Rarer words in the mining prompt",
+    track: 'miningQuality',
+    name: 'Mining Quality',
+    description: 'Rarer words in the mining prompt',
     values: [3, 2, 1, 0], // min tier in prompt pool
     costs: [1500, 6000, 20000, 80000],
-    requiredMilestone: "journeyman",
+    requiredMilestone: 'journeyman',
   },
   {
-    track: "autoMiner",
-    name: "Auto-Miner",
+    track: 'autoMiner',
+    name: 'Auto-Miner',
     description: "Auto-types when you're idle",
     values: [0, 0.5, 1, 2, 3, 5], // chars/sec, 0 = not purchased
     costs: [3000, 8000, 25000, 70000, 200000],
-    requiredMilestone: "wordsmith",
+    requiredMilestone: 'wordsmith',
   },
   {
-    track: "inkMultiplier",
-    name: "Ink Multiplier",
-    description: "Bonus on all Ink earned",
+    track: 'inkMultiplier',
+    name: 'Ink Multiplier',
+    description: 'Bonus on all Ink earned',
     values: [0, 0.1, 0.25, 0.5, 0.75, 1.0], // bonus fraction
     costs: [5000, 15000, 50000, 150000, 500000],
-    requiredMilestone: "lexicographer",
+    requiredMilestone: 'lexicographer',
   },
   {
-    track: "apprenticeShelfWidth",
-    name: "Apprentice Shelf Width",
-    description: "Max word length for the apprentice shelf",
+    track: 'apprenticeShelfWidth',
+    name: 'Apprentice Shelf Width',
+    description: 'Max word length for the apprentice shelf',
     values: [4, 5, 6, 7, 8, 9, 11, 15, 22, 45],
     costs: [3000, 6000, 12000, 25000, 50000, 100000, 200000, 400000, 800000, 1500000],
-    requiredMilestone: "lexicographer",
+    requiredMilestone: 'lexicographer',
   },
 ] as const
 
@@ -76,60 +76,60 @@ export interface UniqueUpgradeDef {
 
 export const UNIQUE_UPGRADES: readonly UniqueUpgradeDef[] = [
   {
-    id: "basinShake",
-    name: "Basin Shake",
-    description: "Shift+Space to scatter piled letters",
+    id: 'basinShake',
+    name: 'Basin Shake',
+    description: 'Shift+Space to scatter piled letters',
     cost: 1000,
-    requiredMilestone: "apprentice",
+    requiredMilestone: 'apprentice',
   },
   {
-    id: "vowelBloom",
-    name: "Vowel Bloom",
-    description: "Vowels glow in the basin",
+    id: 'vowelBloom',
+    name: 'Vowel Bloom',
+    description: 'Vowels glow in the basin',
     cost: 3000,
-    requiredMilestone: "journeyman",
+    requiredMilestone: 'journeyman',
   },
   {
-    id: "wordCheck",
-    name: "Word Check",
-    description: "See if your shelf word is valid, blocks invalid submissions",
+    id: 'wordCheck',
+    name: 'Word Check',
+    description: 'See if your shelf word is valid, blocks invalid submissions',
     cost: 4000,
-    requiredMilestone: "journeyman",
+    requiredMilestone: 'journeyman',
   },
   {
-    id: "siphon",
-    name: "Siphon",
-    description: "Tab to type letters from basin onto shelf",
+    id: 'siphon',
+    name: 'Siphon',
+    description: 'Tab to type letters from basin onto shelf',
     cost: 10000,
-    requiredMilestone: "wordsmith",
+    requiredMilestone: 'wordsmith',
   },
   {
-    id: "wordGhost",
-    name: "Word Ghost",
-    description: "Basin letters that complete your word pulse",
+    id: 'wordGhost',
+    name: 'Word Ghost',
+    description: 'Basin letters that complete your word pulse',
     cost: 15000,
-    requiredMilestone: "wordsmith",
+    requiredMilestone: 'wordsmith',
   },
   {
-    id: "apprenticeShelf",
-    name: "Apprentice Shelf",
-    description: "Auto-assembles discovered words from the basin",
+    id: 'apprenticeShelf',
+    name: 'Apprentice Shelf',
+    description: 'Auto-assembles discovered words from the basin',
     cost: 50000,
-    requiredMilestone: "lexicographer",
+    requiredMilestone: 'lexicographer',
   },
   {
-    id: "wordCompass",
-    name: "Word Compass",
-    description: "Highlights next letters for undiscovered words",
+    id: 'wordCompass',
+    name: 'Word Compass',
+    description: 'Highlights next letters for undiscovered words',
     cost: 80000,
-    requiredMilestone: "lexicographer",
+    requiredMilestone: 'lexicographer',
   },
   {
-    id: "autoDiscovery",
-    name: "Auto-Discovery",
-    description: "Apprentice shelf discovers new words on its own",
+    id: 'autoDiscovery',
+    name: 'Auto-Discovery',
+    description: 'Apprentice shelf discovers new words on its own',
     cost: 200000,
-    requiredMilestone: "publisher",
+    requiredMilestone: 'publisher',
   },
 ]
 
@@ -142,18 +142,16 @@ export interface MilestoneDef {
 }
 
 export const MILESTONES: readonly MilestoneDef[] = [
-  { name: "apprentice", displayName: "Apprentice", totalInkRequired: 500 },
-  { name: "journeyman", displayName: "Journeyman", totalInkRequired: 5000 },
-  { name: "wordsmith", displayName: "Wordsmith", totalInkRequired: 20000 },
-  { name: "lexicographer", displayName: "Lexicographer", totalInkRequired: 80000 },
-  { name: "publisher", displayName: "Publisher", totalInkRequired: 300000 },
+  { name: 'apprentice', displayName: 'Apprentice', totalInkRequired: 500 },
+  { name: 'journeyman', displayName: 'Journeyman', totalInkRequired: 5000 },
+  { name: 'wordsmith', displayName: 'Wordsmith', totalInkRequired: 20000 },
+  { name: 'lexicographer', displayName: 'Lexicographer', totalInkRequired: 80000 },
+  { name: 'publisher', displayName: 'Publisher', totalInkRequired: 300000 },
 ]
 
 // ── Lookup functions ──
 
-const TIERED_MAP = new Map<UpgradeTrack, TieredUpgradeDef>(
-  TIERED_UPGRADES.map((u) => [u.track, u]),
-)
+const TIERED_MAP = new Map<UpgradeTrack, TieredUpgradeDef>(TIERED_UPGRADES.map((u) => [u.track, u]))
 
 const MILESTONE_ORDER: readonly MilestoneName[] = MILESTONES.map((m) => m.name)
 

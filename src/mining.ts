@@ -3,8 +3,8 @@
  * Line breaking powered by @chenglou/pretext.
  */
 
-import { prepareWithSegments, layoutWithLines } from "@chenglou/pretext"
-import { COLORS, MINING, PROMPT_FONT } from "./constants"
+import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
+import { COLORS, MINING, PROMPT_FONT } from './constants'
 
 interface PromptChar {
   char: string
@@ -26,7 +26,7 @@ interface MiningOptions {
 
 export class MiningPrompt {
   private words: string[]
-  private onLetterMined: MiningOptions["onLetterMined"]
+  private onLetterMined: MiningOptions['onLetterMined']
 
   paused = false
 
@@ -43,7 +43,7 @@ export class MiningPrompt {
   constructor(options: MiningOptions) {
     this.words = options.words
     this.onLetterMined = options.onLetterMined
-    window.addEventListener("keydown", this.handleKey)
+    window.addEventListener('keydown', this.handleKey)
   }
 
   private generateText(wordCount: number): string {
@@ -58,7 +58,7 @@ export class MiningPrompt {
       parts.push(formatted)
       this.wordCount++
     }
-    return parts.join(" ")
+    return parts.join(' ')
   }
 
   private buildLines(screenWidth: number): PromptLine[] {
@@ -72,7 +72,7 @@ export class MiningPrompt {
     let globalIdx = this.totalChars()
 
     for (const line of result.lines) {
-      const lineText = line.text.replace(/\s+$/, "")
+      const lineText = line.text.replace(/\s+$/, '')
       const chars: PromptChar[] = []
       for (const ch of lineText) {
         chars.push({ char: ch, mined: false, mineTime: 0, mistakeTime: 0 })
@@ -90,9 +90,7 @@ export class MiningPrompt {
     return n
   }
 
-  private charAtGlobal(
-    idx: number,
-  ): { line: PromptLine; lineIdx: number; charIdx: number } | null {
+  private charAtGlobal(idx: number): { line: PromptLine; lineIdx: number; charIdx: number } | null {
     for (let li = 0; li < this.lines.length; li++) {
       const line = this.lines[li]!
       if (idx >= line.startIdx && idx < line.startIdx + line.chars.length) {
@@ -115,10 +113,10 @@ export class MiningPrompt {
     const now = performance.now()
 
     // Ignore spacebar when current char isn't a space
-    if (e.key === " " && pc.char !== " ") return
+    if (e.key === ' ' && pc.char !== ' ') return
 
-    if (pc.char === " ") {
-      if (e.key === " ") {
+    if (pc.char === ' ') {
+      if (e.key === ' ') {
         pc.mined = true
         pc.mineTime = now
         this.cursorPos++
@@ -149,10 +147,7 @@ export class MiningPrompt {
     }
 
     const cursorInfo = this.charAtGlobal(this.cursorPos)
-    if (
-      cursorInfo &&
-      cursorInfo.lineIdx >= this.lines.length - MINING.maxVisibleLines
-    ) {
+    if (cursorInfo && cursorInfo.lineIdx >= this.lines.length - MINING.maxVisibleLines) {
       this.lines.push(...this.buildLines(screenWidth))
     }
 
@@ -171,25 +166,19 @@ export class MiningPrompt {
     const firstVisible = Math.max(0, cursorLineIdx - 1)
     const lastVisible = cursorLineIdx + 2
 
-    for (
-      let li = firstVisible;
-      li < Math.min(lastVisible, this.lines.length);
-      li++
-    ) {
+    for (let li = firstVisible; li < Math.min(lastVisible, this.lines.length); li++) {
       const line = this.lines[li]!
-      const lineBaseY =
-        MINING.firstLineY + li * MINING.lineHeight - this.scrollOffset
+      const lineBaseY = MINING.firstLineY + li * MINING.lineHeight - this.scrollOffset
 
       ctx.font = PROMPT_FONT
-      ctx.textBaseline = "alphabetic"
-      ctx.textAlign = "left"
+      ctx.textBaseline = 'alphabetic'
+      ctx.textAlign = 'left'
 
       for (let ci = 0; ci < line.chars.length; ci++) {
         const pc = line.chars[ci]!
         const globalIdx = line.startIdx + ci
 
-        const x =
-          MINING.padX + ctx.measureText(line.text.substring(0, ci)).width
+        const x = MINING.padX + ctx.measureText(line.text.substring(0, ci)).width
         const charWidth =
           ctx.measureText(line.text.substring(0, ci + 1)).width -
           ctx.measureText(line.text.substring(0, ci)).width
@@ -199,7 +188,7 @@ export class MiningPrompt {
           y: lineBaseY,
         })
 
-        if (pc.char === " ") {
+        if (pc.char === ' ') {
           if (globalIdx === this.cursorPos && !pc.mined) {
             ctx.globalAlpha = 1
             ctx.fillStyle = COLORS.valid
@@ -246,6 +235,6 @@ export class MiningPrompt {
   }
 
   destroy() {
-    window.removeEventListener("keydown", this.handleKey)
+    window.removeEventListener('keydown', this.handleKey)
   }
 }

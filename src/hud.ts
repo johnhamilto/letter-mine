@@ -1,9 +1,9 @@
 /** HUD — economy display: ink counter, discovered count, score flash, milestone flash. */
 
-import { COLORS, FONT_FAMILY, SCORING } from "./constants"
-import type { Economy } from "./economy"
-import { getMilestoneDef, MILESTONES } from "./upgrades"
-import type { MilestoneName } from "./types"
+import { COLORS, FONT_FAMILY, SCORING } from './constants'
+import type { Economy } from './economy'
+import { getMilestoneDef, MILESTONES } from './upgrades'
+import type { MilestoneName } from './types'
 
 const MILESTONE_FLASH_MS = 4000
 
@@ -13,8 +13,32 @@ export class Hud {
   private milestoneTime = 0
   getMilestone: () => MilestoneName | null = () => null
 
+  // DOM elements for milestone bar
+  private barContainer: HTMLDivElement
+  private barFill: HTMLDivElement
+  private barLabel: HTMLDivElement
+  private barTooltip: HTMLDivElement
+
   constructor(economy: Economy) {
     this.economy = economy
+
+    // Build DOM milestone bar
+    this.barContainer = document.createElement('div')
+    this.barContainer.className = 'milestone-bar'
+
+    this.barFill = document.createElement('div')
+    this.barFill.className = 'milestone-bar-fill'
+    this.barContainer.appendChild(this.barFill)
+
+    this.barLabel = document.createElement('div')
+    this.barLabel.className = 'milestone-bar-label'
+    this.barContainer.appendChild(this.barLabel)
+
+    this.barTooltip = document.createElement('div')
+    this.barTooltip.className = 'milestone-bar-tooltip'
+    this.barContainer.appendChild(this.barTooltip)
+
+    document.body.appendChild(this.barContainer)
   }
 
   showMilestone(name: MilestoneName) {
@@ -26,7 +50,7 @@ export class Hud {
   render(ctx: CanvasRenderingContext2D, screenWidth: number, screenHeight: number) {
     this.renderInkCounter(ctx)
     this.renderDiscoveredCount(ctx)
-    this.renderMilestoneBar(ctx)
+    this.updateMilestoneBar()
     this.renderScoreFlash(ctx, screenWidth)
     this.renderMilestoneFlash(ctx, screenWidth, screenHeight)
   }
@@ -37,8 +61,8 @@ export class Hud {
     ctx.save()
     ctx.fillStyle = COLORS.ink
     ctx.font = `bold 22px ${FONT_FAMILY}`
-    ctx.textAlign = "left"
-    ctx.textBaseline = "alphabetic"
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
     ctx.fillText(`${ink} Ink`, 20, 36)
     ctx.restore()
   }
@@ -49,79 +73,36 @@ export class Hud {
     ctx.save()
     ctx.fillStyle = COLORS.muted
     ctx.font = `16px ${FONT_FAMILY}`
-    ctx.textAlign = "left"
-    ctx.textBaseline = "alphabetic"
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
     ctx.fillText(`${count} discovered`, 20, 58)
     ctx.restore()
   }
 
-  private renderMilestoneBar(ctx: CanvasRenderingContext2D) {
+  private updateMilestoneBar() {
     const current = this.getMilestone()
     const totalInk = this.economy.totalInkEarned
 
-    // Find the next milestone
-    const currentIdx = current
-      ? MILESTONES.findIndex((m) => m.name === current)
-      : -1
+    const currentIdx = current ? MILESTONES.findIndex((m) => m.name === current) : -1
     const nextMs = MILESTONES[currentIdx + 1]
 
     if (!nextMs) {
-      // All milestones reached
-      ctx.save()
-      ctx.fillStyle = COLORS.valid
-      ctx.font = `bold 12px ${FONT_FAMILY}`
-      ctx.textAlign = "left"
-      ctx.textBaseline = "alphabetic"
-      ctx.fillText("All milestones reached", 20, 76)
-      ctx.restore()
+      this.barFill.style.width = '100%'
+      this.barLabel.textContent = 'All milestones reached'
+      this.barTooltip.textContent = `${Math.floor(totalInk).toLocaleString()} total Ink earned`
       return
     }
 
-    const prevThreshold = currentIdx >= 0
-      ? MILESTONES[currentIdx]!.totalInkRequired
-      : 0
+    const prevThreshold = currentIdx >= 0 ? MILESTONES[currentIdx]!.totalInkRequired : 0
     const range = nextMs.totalInkRequired - prevThreshold
     const progress = Math.min(1, (totalInk - prevThreshold) / range)
 
-    const barX = 20
-    const barY = 66
-    const barW = 140
-    const barH = 10
-
-    ctx.save()
-
-    // Label
-    ctx.fillStyle = COLORS.muted
-    ctx.font = `11px ${FONT_FAMILY}`
-    ctx.textAlign = "left"
-    ctx.textBaseline = "alphabetic"
-    ctx.fillText(
-      `${nextMs.displayName} — ${Math.floor(totalInk).toLocaleString()} / ${nextMs.totalInkRequired.toLocaleString()}`,
-      barX,
-      barY - 2,
-    )
-
-    // Track
-    ctx.fillStyle = "rgba(0, 0, 0, 0.08)"
-    ctx.beginPath()
-    ctx.roundRect(barX, barY, barW, barH, 3)
-    ctx.fill()
-
-    // Fill
-    if (progress > 0) {
-      ctx.fillStyle = COLORS.valid
-      ctx.beginPath()
-      ctx.roundRect(barX, barY, Math.max(6, barW * progress), barH, 3)
-      ctx.fill()
-    }
-
-    ctx.restore()
+    this.barFill.style.width = `${(progress * 100).toFixed(1)}%`
+    this.barLabel.textContent = nextMs.displayName
+    this.barTooltip.textContent = `${Math.floor(totalInk).toLocaleString()} / ${nextMs.totalInkRequired.toLocaleString()} Ink`
   }
 
-  private renderScoreFlash(
-    ctx: CanvasRenderingContext2D,
-    screenWidth: number,
-  ) {
+  private renderScoreFlash(ctx: CanvasRenderingContext2D, screenWidth: number) {
     const score = this.economy.lastScore
     if (!score) return
 
@@ -140,18 +121,18 @@ export class Hud {
 
     ctx.fillStyle = score.isRepeat ? COLORS.muted : COLORS.valid
     ctx.font = `bold 28px ${FONT_FAMILY}`
-    ctx.textAlign = "center"
-    ctx.textBaseline = "alphabetic"
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'alphabetic'
     ctx.fillText(`+${score.finalInk} Ink`, centerX, baseY)
 
     if (score.bonuses.length > 0 || score.isRepeat) {
       const tags: string[] = []
-      if (score.isRepeat) tags.push("repeat")
+      if (score.isRepeat) tags.push('repeat')
       for (const b of score.bonuses) tags.push(b.label)
 
       ctx.fillStyle = COLORS.muted
       ctx.font = `14px ${FONT_FAMILY}`
-      ctx.fillText(tags.join(" / "), centerX, baseY + 22)
+      ctx.fillText(tags.join(' / '), centerX, baseY + 22)
     }
 
     ctx.restore()
@@ -171,7 +152,6 @@ export class Hud {
     }
 
     const t = elapsed / MILESTONE_FLASH_MS
-    // Fade in first 15%, hold, fade out last 30%
     let alpha: number
     if (t < 0.15) {
       alpha = t / 0.15
@@ -195,7 +175,7 @@ export class Hud {
     // Full-width dimmed backdrop
     const bw = 380
     const bh = 90
-    ctx.fillStyle = "rgba(245, 240, 232, 0.92)"
+    ctx.fillStyle = 'rgba(245, 240, 232, 0.92)'
     ctx.beginPath()
     ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 12)
     ctx.fill()
@@ -208,9 +188,9 @@ export class Hud {
     // "Milestone Reached" label
     ctx.fillStyle = COLORS.muted
     ctx.font = `13px ${FONT_FAMILY}`
-    ctx.textAlign = "center"
-    ctx.textBaseline = "middle"
-    ctx.fillText("MILESTONE REACHED", 0, -20)
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('MILESTONE REACHED', 0, -20)
 
     // Milestone name
     ctx.fillStyle = COLORS.ink

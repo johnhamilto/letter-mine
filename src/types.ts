@@ -1,6 +1,6 @@
 /** Shared type definitions. */
 
-import type RAPIER_NS from "@dimforge/rapier2d-compat"
+import type RAPIER_NS from '@dimforge/rapier2d-compat'
 
 export interface GlyphData {
   char: string
@@ -24,7 +24,7 @@ export interface ShelfLetter {
   isUpper: boolean
 }
 
-export type WordStatus = "none" | "prefix" | "valid"
+export type WordStatus = 'none' | 'prefix' | 'valid'
 
 // ── Economy ──
 
@@ -56,26 +56,26 @@ export interface ScoreResult {
 // ── Upgrades & Progression ──
 
 export type UpgradeTrack =
-  | "basinCapacity"
-  | "shelfWidth"
-  | "apprenticeShelfWidth"
-  | "miningQuality"
-  | "autoMiner"
-  | "inkMultiplier"
+  | 'basinCapacity'
+  | 'shelfWidth'
+  | 'apprenticeShelfWidth'
+  | 'miningQuality'
+  | 'autoMiner'
+  | 'inkMultiplier'
 
 export type UniqueUpgrade =
-  | "wordCheck"
-  | "basinShake"
-  | "vowelBloom"
-  | "siphon"
-  | "wordGhost"
-  | "apprenticeShelf"
-  | "wordCompass"
-  | "autoDiscovery"
+  | 'wordCheck'
+  | 'basinShake'
+  | 'vowelBloom'
+  | 'siphon'
+  | 'wordGhost'
+  | 'apprenticeShelf'
+  | 'wordCompass'
+  | 'autoDiscovery'
 
 export type MilestoneName =
-  | "apprentice"
-  | "journeyman"
-  | "wordsmith"
-  | "lexicographer"
-  | "publisher"
+  | 'apprentice'
+  | 'journeyman'
+  | 'wordsmith'
+  | 'lexicographer'
+  | 'publisher'

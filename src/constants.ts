@@ -14,16 +14,16 @@ export const PROMPT_FONT = `bold ${PROMPT_FONT_SIZE}px ${FONT_FAMILY}`
 
 // ── Colors ──
 export const COLORS = {
-  bg: "#F5F0E8",
-  ink: "#2C2416",
-  inkDark: "#1A1008",
-  shelf: "#8B7355",
-  shelfBg: "#EDE6D6",
-  shelfDark: "#6B5A42",
-  valid: "#6B4423",
-  muted: "#9E8E76",
-  faded: "#C4B69C",
-  error: "#C0392B",
+  bg: '#F5F0E8',
+  ink: '#2C2416',
+  inkDark: '#1A1008',
+  shelf: '#8B7355',
+  shelfBg: '#EDE6D6',
+  shelfDark: '#6B5A42',
+  valid: '#6B4423',
+  muted: '#9E8E76',
+  faded: '#C4B69C',
+  error: '#C0392B',
 } as const
 
 // ── Physics ──
@@ -70,7 +70,7 @@ export const MINING = {
 
 // ── Shelf ──
 export const SHELF = {
-  yRatio: 0.40,
+  yRatio: 0.4,
   margin: 60,
   height: 80,
   slotWidth: 48,

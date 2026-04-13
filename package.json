@@ -7,11 +7,23 @@
     "dev": "bunx vite",
     "build": "bunx vite build",
     "build:dict": "bun run scripts/build-dictionary.ts",
-    "build:glyphs": "bun run scripts/build-glyphs.ts"
+    "build:glyphs": "bun run scripts/build-glyphs.ts",
+    "lint": "bunx eslint src/",
+    "lint:fix": "bunx eslint src/ --fix",
+    "format": "bunx prettier --write 'src/**/*.ts' '*.md' '.github/**/*.yml'",
+    "format:check": "bunx prettier --check 'src/**/*.ts' '*.md'",
+    "mdlint": "bunx markdownlint-cli2 '**/*.md' '#node_modules' '#dist' '#.wt'",
+    "check": "bunx tsc --noEmit -p tsconfig.check.json && bun run lint && bun run format:check && bun run mdlint"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/bun": "latest",
     "@types/opentype.js": "^1.3.9",
+    "eslint": "^10.2.0",
+    "globals": "^17.5.0",
+    "markdownlint-cli2": "^0.22.0",
+    "prettier": "^3.8.2",
+    "typescript-eslint": "^8.58.2",
     "vite-plugin-wasm": "^3.6.0"
   },
   "peerDependencies": {

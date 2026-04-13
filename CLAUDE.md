@@ -153,10 +153,12 @@ wt prune --force           # Remove all clean worktrees (skip only uncommitted)
 ```
 
 **Configuration files** (repo root):
+
 - `.worktree-sync` — files copied into each new worktree (e.g. `.env`, `.env.local`)
 - `.worktree-setup` — shell script that runs after worktree creation (e.g. `bun install`)
 
 **Rules for worktree development:**
+
 - One feature per worktree. Branch name = worktree directory name.
 - Run `bun install` in each new worktree (add it to `.worktree-setup` to automate).
 - Dev servers in different worktrees need different ports — pass `--port` to avoid collisions.

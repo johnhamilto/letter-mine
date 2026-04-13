@@ -3,8 +3,8 @@
  * No physics body. Letters fall behind it.
  */
 
-import { SCALE, COLORS, SHELF, FONT_FAMILY } from "./constants"
-import type { ShelfLetter, WordStatus } from "./types"
+import { SCALE, COLORS, SHELF, FONT_FAMILY } from './constants'
+import type { ShelfLetter, WordStatus } from './types'
 
 interface SubmitResult {
   valid: boolean
@@ -22,7 +22,7 @@ export class Shelf {
   shelfWidth = 0
   shelfHeight = SHELF.height
 
-  wordStatus: WordStatus = "none"
+  wordStatus: WordStatus = 'none'
   private dictionary: Set<string> | null = null
   private prefixes: Set<string> | null = null
 
@@ -89,12 +89,7 @@ export class Shelf {
 
   isOverShelf(screenX: number, screenY: number): boolean {
     const r = this.rect
-    return (
-      screenX >= r.x &&
-      screenX <= r.x + r.w &&
-      screenY >= r.y &&
-      screenY <= r.y + r.h
-    )
+    return screenX >= r.x && screenX <= r.x + r.w && screenY >= r.y && screenY <= r.y + r.h
   }
 
   placeLetter(char: string, isUpper: boolean): boolean {
@@ -128,31 +123,31 @@ export class Shelf {
   }
 
   currentWord(): string {
-    return this.letters.map((l) => l.char.toLowerCase()).join("")
+    return this.letters.map((l) => l.char.toLowerCase()).join('')
   }
 
   displayWord(): string {
-    return this.letters.map((l) => l.char).join("")
+    return this.letters.map((l) => l.char).join('')
   }
 
   private validate() {
     if (this.letters.length < 4) {
-      this.wordStatus = "none"
+      this.wordStatus = 'none'
       return
     }
     const word = this.currentWord()
     if (this.dictionary?.has(word)) {
-      this.wordStatus = "valid"
+      this.wordStatus = 'valid'
     } else if (this.prefixes?.has(word)) {
-      this.wordStatus = "prefix"
+      this.wordStatus = 'prefix'
     } else {
-      this.wordStatus = "none"
+      this.wordStatus = 'none'
     }
   }
 
   submit(): SubmitResult {
     if (this.letters.length === 0) {
-      return { valid: false, word: "", letters: [], submittedLetters: [] }
+      return { valid: false, word: '', letters: [], submittedLetters: [] }
     }
 
     const word = this.displayWord()
@@ -162,24 +157,24 @@ export class Shelf {
       return { valid: false, word, letters: [], submittedLetters: [] }
     }
 
-    if (this.wordStatus === "valid") {
+    if (this.wordStatus === 'valid') {
       this.submittedWords.push(word)
       this.letters = []
-      this.wordStatus = "none"
+      this.wordStatus = 'none'
       return { valid: true, word, letters: [], submittedLetters }
     }
 
     // Invalid — return letters to be dumped
     const cleared = [...this.letters]
     this.letters = []
-    this.wordStatus = "none"
+    this.wordStatus = 'none'
     return { valid: false, word, letters: cleared, submittedLetters: [] }
   }
 
   clear(): ShelfLetter[] {
     const cleared = [...this.letters]
     this.letters = []
-    this.wordStatus = "none"
+    this.wordStatus = 'none'
     return cleared
   }
 
@@ -187,8 +182,7 @@ export class Shelf {
     if (this.letters.length === 0) return 0
     const sw = this.effectiveSlotWidth
     const sg = this.effectiveSlotGap
-    const totalWidth =
-      this.letters.length * sw + Math.max(0, this.letters.length - 1) * sg
+    const totalWidth = this.letters.length * sw + Math.max(0, this.letters.length - 1) * sg
     const startX = this.x + (this.shelfWidth - totalWidth) / 2
     const relX = screenX - startX
     const idx = Math.round(relX / (sw + sg))
@@ -238,9 +232,9 @@ export class Shelf {
     if (this.letters.length === 0) {
       ctx.fillStyle = COLORS.muted
       ctx.font = `italic 18px ${FONT_FAMILY}`
-      ctx.textAlign = "center"
-      ctx.textBaseline = "middle"
-      ctx.fillText("click or drag letters here", r.x + r.w / 2, r.y + r.h / 2)
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('click or drag letters here', r.x + r.w / 2, r.y + r.h / 2)
     } else {
       // Submit button (right side of container)
       this.btnX = r.x + r.w - this.btnW - 10
@@ -251,9 +245,9 @@ export class Shelf {
       ctx.fill()
       ctx.fillStyle = COLORS.shelfBg
       ctx.font = `bold 14px ${FONT_FAMILY}`
-      ctx.textAlign = "center"
-      ctx.textBaseline = "middle"
-      ctx.fillText("Submit", this.btnX + this.btnW / 2, this.btnY + this.btnH / 2)
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('Submit', this.btnX + this.btnW / 2, this.btnY + this.btnH / 2)
 
       // Letters — green if current word is already discovered
       const isDiscovered =
@@ -264,8 +258,8 @@ export class Shelf {
       const sw = this.effectiveSlotWidth
       const fontSize = Math.min(SCALE * 0.6, sw * 1.2)
       ctx.font = `bold ${fontSize}px ${FONT_FAMILY}`
-      ctx.textAlign = "center"
-      ctx.textBaseline = "middle"
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
 
       for (let i = 0; i < this.letters.length; i++) {
         const sl = this.letters[i]!
@@ -283,21 +277,17 @@ export class Shelf {
     if (this.letters.length > 0 && this.letters.length < 4) {
       ctx.fillStyle = COLORS.faded
       ctx.font = `13px ${FONT_FAMILY}`
-      ctx.textAlign = "center"
-      ctx.textBaseline = "alphabetic"
-      ctx.fillText(
-        `${this.letters.length} / 4 min`,
-        r.x + r.w / 2,
-        r.y + r.h + 18,
-      )
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'alphabetic'
+      ctx.fillText(`${this.letters.length} / 4 min`, r.x + r.w / 2, r.y + r.h + 18)
     }
 
     // Recent submissions
     if (this.submittedWords.length > 0) {
       ctx.fillStyle = COLORS.muted
       ctx.font = `14px ${FONT_FAMILY}`
-      ctx.textAlign = "right"
-      ctx.textBaseline = "alphabetic"
+      ctx.textAlign = 'right'
+      ctx.textBaseline = 'alphabetic'
       const recent = this.submittedWords.slice(-5)
       for (let i = 0; i < recent.length; i++) {
         ctx.fillText(recent[i]!, r.x + r.w, r.y + r.h + 20 + i * 18)

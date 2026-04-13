@@ -1,5 +1,5 @@
-import RAPIER from "@dimforge/rapier2d-compat"
-import { Game } from "./game"
+import RAPIER from '@dimforge/rapier2d-compat'
+import { Game } from './game'
 
 async function main() {
   const base = import.meta.env.BASE_URL
@@ -7,10 +7,7 @@ async function main() {
   await Promise.all([
     RAPIER.init(),
     (async () => {
-      const font = new FontFace(
-        "Playfair Display",
-        `url(${base}fonts/PlayfairDisplay.ttf)`,
-      )
+      const font = new FontFace('Playfair Display', `url(${base}fonts/PlayfairDisplay.ttf)`)
       await font.load()
       document.fonts.add(font)
     })(),
@@ -18,7 +15,7 @@ async function main() {
 
   const glyphData = await fetch(`${base}glyphs.json`).then((r) => r.json())
 
-  const canvas = document.getElementById("game") as HTMLCanvasElement
+  const canvas = document.getElementById('game') as HTMLCanvasElement
   const game = new Game(canvas, RAPIER, glyphData)
   ;(window as unknown as Record<string, unknown>).__game = game
   game.start()

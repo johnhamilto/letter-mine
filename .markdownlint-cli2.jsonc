@@ -1,0 +1,12 @@
+{
+  "config": {
+    "default": true,
+    // Allow longer lines — docs have tables and URLs
+    "MD013": false,
+    // Allow multiple top-level headings (each doc has a purpose block + title)
+    "MD025": false,
+    // Allow inline HTML (rare but sometimes needed in tables)
+    "MD033": false
+  },
+  "ignores": ["node_modules/", "dist/", ".wt/"]
+}

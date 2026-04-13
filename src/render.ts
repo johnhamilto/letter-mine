@@ -1,18 +1,14 @@
 /** Glyph caching and letter rendering. */
 
-import { SCALE, COLORS, FONT_FAMILY } from "./constants"
-import type { GlyphData, LetterBody } from "./types"
+import { SCALE, COLORS, FONT_FAMILY } from './constants'
+import type { GlyphData, LetterBody } from './types'
 
 export class LetterRenderer {
   private cache = new Map<string, OffscreenCanvas>()
   showGlyphs = true
   showColliders = false
 
-  private getCachedGlyph(
-    glyph: GlyphData,
-    isUpper: boolean,
-    scale: number,
-  ): OffscreenCanvas {
+  private getCachedGlyph(glyph: GlyphData, isUpper: boolean, scale: number): OffscreenCanvas {
     const key = `${glyph.char}_${scale}`
     const cached = this.cache.get(key)
     if (cached) return cached
@@ -26,13 +22,13 @@ export class LetterRenderer {
     const h = Math.ceil(glyph.height * s) + pad * 2
 
     const oc = new OffscreenCanvas(w * dpr, h * dpr)
-    const octx = oc.getContext("2d")!
+    const octx = oc.getContext('2d')!
     octx.scale(dpr, dpr)
 
     octx.fillStyle = isUpper ? COLORS.inkDark : COLORS.ink
     octx.font = `bold ${fontSize}px ${FONT_FAMILY}`
-    octx.textBaseline = "alphabetic"
-    octx.textAlign = "left"
+    octx.textBaseline = 'alphabetic'
+    octx.textAlign = 'left'
 
     octx.fillText(glyph.char, -glyph.offsetX * s + pad, -glyph.offsetY * s + pad)
 
@@ -75,7 +71,7 @@ export class LetterRenderer {
       )
 
       if (highlighted) {
-        ctx.shadowColor = "transparent"
+        ctx.shadowColor = 'transparent'
         ctx.shadowBlur = 0
       }
     }
@@ -86,7 +82,7 @@ export class LetterRenderer {
         const collider = letter.body.collider(c)
         const verts = collider.vertices()
         if (verts && verts.length >= 4) {
-          ctx.strokeStyle = "rgba(220, 40, 40, 0.7)"
+          ctx.strokeStyle = 'rgba(220, 40, 40, 0.7)'
           ctx.lineWidth = 1.5 / scale
           ctx.beginPath()
           ctx.moveTo(verts[0]! * SCALE, verts[1]! * SCALE)

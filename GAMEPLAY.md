@@ -23,7 +23,7 @@ value = Math.floor(Math.pow(length, 1.5)) * tierMultiplier * bonuses
 ```
 
 | Length | Base | Universal (1x) | Common (1.5x) | Uncommon (3x) | Rare (6x) | Legendary (15x) |
-|--------|------|----------------|---------------|---------------|-----------|-----------------|
+| ------ | ---- | -------------- | ------------- | ------------- | --------- | --------------- |
 | 4      | 8    | 8              | 12            | 24            | 48        | 120             |
 | 5      | 11   | 11             | 16            | 33            | 66        | 165             |
 | 6      | 15   | 15             | 22            | 45            | 90        | 225             |
@@ -161,6 +161,7 @@ Cost: 5000
 Highlights valid "next" letters in the basin for the word you're currently building on the shelf — but only for words you haven't discovered yet. Guides you toward new discoveries without handing them to you outright.
 
 Three visual states:
+
 - **Available**: a basin letter that would extend your shelf into a valid undiscovered prefix or word gets a colored highlight (distinct from hover glow). Multiple letters may highlight if several next-letters are valid.
 - **Exists but not in basin**: a subtle indicator on the shelf (e.g., faded ghost letter at the next slot position) showing that a valid next-letter exists in the dictionary but isn't currently in the basin. Tells you "keep mining, the letter you need will come."
 - **Dead end**: no indicator — the current shelf sequence can't become any undiscovered word. You know to submit what you have or rearrange.
@@ -183,20 +184,20 @@ Cost: 20000
 
 Gates that unlock upgrade tracks and mark progression chapters.
 
-| Milestone     | Total Ink | Unlocks                                                              |
-|---------------|-----------|----------------------------------------------------------------------|
-| Apprentice    | 50        | Upgrade shop, Basin Capacity, Shelf Width, Basin Shake               |
-| Journeyman    | 500       | Mining Quality, Vowel Bloom, Word Check                              |
-| Wordsmith     | 2000      | Auto-Miner, Siphon, Word Ghost                                      |
+| Milestone     | Total Ink | Unlocks                                                                |
+| ------------- | --------- | ---------------------------------------------------------------------- |
+| Apprentice    | 50        | Upgrade shop, Basin Capacity, Shelf Width, Basin Shake                 |
+| Journeyman    | 500       | Mining Quality, Vowel Bloom, Word Check                                |
+| Wordsmith     | 2000      | Auto-Miner, Siphon, Word Ghost                                         |
 | Lexicographer | 8000      | Ink Multiplier, Apprentice Shelf, Apprentice Shelf Width, Word Compass |
-| Publisher     | 30000     | Auto-Discovery, "Publish Your Dictionary" ending begins              |
+| Publisher     | 30000     | Auto-Discovery, "Publish Your Dictionary" ending begins                |
 
 ## Pacing
 
 Target Ink rates by phase (active play):
 
 | Phase   | Time        | Ink/min | Cumulative | Milestone hit          |
-|---------|-------------|---------|------------|------------------------|
+| ------- | ----------- | ------- | ---------- | ---------------------- |
 | Early   | 0-20 min    | ~20     | ~400       | Apprentice, Journeyman |
 | Mid     | 20-60 min   | ~50     | ~2400      | Wordsmith              |
 | Late    | 60-120 min  | ~100    | ~8400      | Lexicographer          |
@@ -209,6 +210,7 @@ These are rough — actual tuning happens during playtesting. The tighter starti
 Auto-miner types and letters accumulate. Apprentice shelf assembles words from discovered list. Per-letter Ink trickle (0.1/letter) adds baseline passive income.
 
 **Idle income sources:**
+
 - Per-letter trickle: ~30 Ink/min at max auto-miner
 - Apprentice shelf: ~15-25 Ink/min (depends on discovered words + available letters)
 - Total idle: ~45-55 Ink/min

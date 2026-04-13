@@ -1,0 +1,4 @@
+# Files to copy into new worktrees. One path per line.
+# .env
+# .env.local
+# config/local.yml

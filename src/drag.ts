@@ -3,10 +3,10 @@
  * Click-to-place on shelf, drag to reorder, pull letters off shelf.
  */
 
-import type RAPIER_NS from "@dimforge/rapier2d-compat"
-import type { LetterBody } from "./types"
-import type { Shelf } from "./shelf"
-import { SCALE, DRAG } from "./constants"
+import type RAPIER_NS from '@dimforge/rapier2d-compat'
+import type { LetterBody } from './types'
+import type { Shelf } from './shelf'
+import { SCALE, DRAG } from './constants'
 
 export class DragController {
   private world: RAPIER_NS.World
@@ -15,11 +15,7 @@ export class DragController {
   private letters: LetterBody[]
   private shelf: Shelf
   private onLetterRemoved: (letter: LetterBody) => void
-  private onSpawnFromShelf: (
-    char: string,
-    x: number,
-    y: number,
-  ) => LetterBody | null
+  private onSpawnFromShelf: (char: string, x: number, y: number) => LetterBody | null
   private onLetterReleased: (letter: LetterBody) => void
 
   private dragging: LetterBody | null = null
@@ -36,11 +32,7 @@ export class DragController {
     letters: LetterBody[],
     shelf: Shelf,
     onLetterRemoved: (letter: LetterBody) => void,
-    onSpawnFromShelf: (
-      char: string,
-      x: number,
-      y: number,
-    ) => LetterBody | null,
+    onSpawnFromShelf: (char: string, x: number, y: number) => LetterBody | null,
     onLetterReleased: (letter: LetterBody) => void,
   ) {
     this.canvas = canvas
@@ -52,9 +44,9 @@ export class DragController {
     this.onSpawnFromShelf = onSpawnFromShelf
     this.onLetterReleased = onLetterReleased
 
-    canvas.addEventListener("mousedown", this.onMouseDown)
-    canvas.addEventListener("mousemove", this.onMouseMove)
-    canvas.addEventListener("mouseup", this.onMouseUp)
+    canvas.addEventListener('mousedown', this.onMouseDown)
+    canvas.addEventListener('mousemove', this.onMouseMove)
+    canvas.addEventListener('mouseup', this.onMouseUp)
   }
 
   private getPhysicsPos(e: MouseEvent): { x: number; y: number } {
@@ -72,9 +64,7 @@ export class DragController {
     this.world.intersectionsWithPoint(point, (collider) => {
       const parentBody = collider.parent()
       if (parentBody !== null) {
-        const letter = this.letters.find(
-          (l) => l.body.handle === parentBody.handle,
-        )
+        const letter = this.letters.find((l) => l.body.handle === parentBody.handle)
         if (letter) {
           found = letter
           return false
@@ -114,7 +104,7 @@ export class DragController {
           this.localAnchor.y = 0
           letter.body.wakeUp()
           letter.body.setGravityScale(DRAG.gravityScale, true)
-          this.canvas.style.cursor = "grabbing"
+          this.canvas.style.cursor = 'grabbing'
         }
       }
       return
@@ -145,7 +135,7 @@ export class DragController {
       letter.body.wakeUp()
       letter.body.setGravityScale(DRAG.gravityScale, true)
 
-      this.canvas.style.cursor = "grabbing"
+      this.canvas.style.cursor = 'grabbing'
     }
   }
 
@@ -158,11 +148,11 @@ export class DragController {
     if (!this.dragging) {
       if (this.shelf.letterIndexAt(screenX, screenY) >= 0) {
         this.hovered = null
-        this.canvas.style.cursor = "grab"
+        this.canvas.style.cursor = 'grab'
       } else {
         const letter = this.findLetterAt(pos.x, pos.y)
         this.hovered = letter
-        this.canvas.style.cursor = letter ? "grab" : "default"
+        this.canvas.style.cursor = letter ? 'grab' : 'default'
       }
       return
     }
@@ -193,23 +183,19 @@ export class DragController {
       const insertIdx = this.didDrag
         ? this.shelf.nearestSlotIndex(screenX)
         : this.shelf.letters.length
-      const placed = this.shelf.insertLetter(
-        insertIdx,
-        letter.char,
-        letter.isUpper,
-      )
+      const placed = this.shelf.insertLetter(insertIdx, letter.char, letter.isUpper)
       if (placed) {
         this.world.removeRigidBody(letter.body)
         this.onLetterRemoved(letter)
         this.dragging = null
-        this.canvas.style.cursor = "default"
+        this.canvas.style.cursor = 'default'
         return
       }
     }
 
     this.onLetterReleased(letter)
     this.dragging = null
-    this.canvas.style.cursor = "default"
+    this.canvas.style.cursor = 'default'
   }
 
   getDragging(): LetterBody | null {
@@ -236,10 +222,7 @@ export class DragController {
     const dy = this.mouseTarget.y - (bodyPos.y + ay)
 
     body.setLinvel(
-      new this.RAPIER.Vector2(
-        dx * DRAG.linearResponse,
-        dy * DRAG.linearResponse,
-      ),
+      new this.RAPIER.Vector2(dx * DRAG.linearResponse, dy * DRAG.linearResponse),
       true,
     )
 

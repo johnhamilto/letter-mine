@@ -1,8 +1,8 @@
 /** Economy — scoring, ink tracking, discovered words, streaks. */
 
-import { SCORING } from "./constants"
-import type { GameState } from "./state"
-import type { DictionaryEntry, ScoreBonus, ScoreResult, ShelfLetter } from "./types"
+import { SCORING } from './constants'
+import type { GameState } from './state'
+import type { DictionaryEntry, ScoreBonus, ScoreResult, ShelfLetter } from './types'
 
 export class Economy {
   ink = 0
@@ -15,11 +15,7 @@ export class Economy {
   lastScore: ScoreResult | null = null
   lastScoreTime = 0
 
-  scoreWord(
-    word: string,
-    letters: ShelfLetter[],
-    entry: DictionaryEntry | undefined,
-  ): ScoreResult {
+  scoreWord(word: string, letters: ShelfLetter[], entry: DictionaryEntry | undefined): ScoreResult {
     const normalized = word.toLowerCase()
     const length = normalized.length
     const baseValue = Math.floor(Math.pow(length, 1.5))
@@ -36,7 +32,7 @@ export class Economy {
     // First in family bonus
     if (isFirstInFamily) {
       bonuses.push({
-        label: "First in Family",
+        label: 'First in Family',
         multiplier: SCORING.firstInFamilyBonus,
       })
     }
@@ -44,7 +40,7 @@ export class Economy {
     // Uppercase opener bonus
     if (letters.length > 0 && letters[0]?.isUpper) {
       bonuses.push({
-        label: "Uppercase",
+        label: 'Uppercase',
         multiplier: SCORING.uppercaseOpenerBonus,
       })
     }
@@ -52,11 +48,7 @@ export class Economy {
     // Streak bonus
     if (this.streak > 0) {
       const streakMult =
-        1 +
-        Math.min(
-          this.streak * SCORING.streakBonusPerStep,
-          SCORING.streakBonusCap,
-        )
+        1 + Math.min(this.streak * SCORING.streakBonusPerStep, SCORING.streakBonusCap)
       bonuses.push({
         label: `Streak x${this.streak + 1}`,
         multiplier: streakMult,
@@ -121,9 +113,11 @@ export class Economy {
   }
 
   /** Snapshot economy fields into a partial state. Caller merges with upgrade/milestone data. */
-  toPartialState(submittedWords: string[]): Pick<
+  toPartialState(
+    submittedWords: string[],
+  ): Pick<
     GameState,
-    "ink" | "totalInkEarned" | "discoveredWords" | "discoveredRoots" | "streak" | "submittedWords"
+    'ink' | 'totalInkEarned' | 'discoveredWords' | 'discoveredRoots' | 'streak' | 'submittedWords'
   > {
     return {
       ink: this.ink,
