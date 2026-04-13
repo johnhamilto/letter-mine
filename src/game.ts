@@ -12,9 +12,8 @@ import {
   getUpgradeCost,
   milestoneReached,
   UNIQUE_UPGRADES,
-  hasAffordableUpgrade,
 } from './upgrades'
-import { Shop } from './shop'
+import { renderShop } from './shop.tsx'
 import { AutoMiner } from './auto-miner'
 import { ApprenticeShelf } from './apprentice-shelf'
 import { saveState } from './state'
@@ -74,8 +73,6 @@ export class Game {
   unlockedUniques: Set<UniqueUpgrade> = new Set()
   highestMilestone: MilestoneName | null = null
   shopOpen = false
-  shop: Shop
-  shopBtn: HTMLButtonElement
   private lastShopRefresh = 0
   private lastShakeTime = 0
   autoMiner: AutoMiner
@@ -133,16 +130,8 @@ export class Game {
       this.shelf.submittedWords = saved.submittedWords
     }
 
-    // Shop
-    this.shop = new Shop({
-      getInk: () => this.economy.ink,
-      getUpgradeLevel: (track) => this.upgradeLevels[track],
-      hasUnique: (id) => this.unlockedUniques.has(id),
-      getMilestone: () => this.highestMilestone,
-      onBuyTiered: (track) => this.buyTieredUpgrade(track),
-      onBuyUnique: (id) => this.buyUniqueUpgrade(id),
-      onClose: () => this.closeShop(),
-    })
+    // Initial shop render
+    this.renderShopUI()
 
     // Build PixiJS scene graph (back-to-front)
     this.shelfLayer = this.shelf.container
@@ -301,8 +290,6 @@ export class Game {
         return
       }
 
-      if (this.shopOpen) return
-
       if (e.key === 'Tab' && this.unlockedUniques.has('siphon')) {
         e.preventDefault()
         this.siphonMode = !this.siphonMode
@@ -325,17 +312,6 @@ export class Game {
         this.basinShake()
       }
     })
-
-    // DOM shop button
-    this.shopBtn = document.createElement('button')
-    this.shopBtn.className = 'shop-btn'
-    this.shopBtn.textContent = 'Shop'
-    this.shopBtn.addEventListener('click', () => {
-      if (this.shopOpen) this.closeShop()
-      else this.openShop()
-    })
-    if (this.shelf.submittedWords.length > 0) this.shopBtn.style.display = 'block'
-    document.body.appendChild(this.shopBtn)
 
     this.loadDictionary()
     this.loadMarkov()
@@ -421,30 +397,33 @@ export class Game {
     if (reached && reached !== this.highestMilestone) {
       this.highestMilestone = reached
       this.hud.showMilestone(reached)
-      this.shopBtn.style.display = 'block'
+      this.renderShopUI()
     }
   }
 
   openShop() {
     this.shopOpen = true
-    this.shopBtn.classList.add('shop-open')
-    this.shop.show()
+    this.renderShopUI()
   }
 
   closeShop() {
     this.shopOpen = false
-    this.shopBtn.classList.remove('shop-open')
-    this.shop.hide()
+    this.renderShopUI()
   }
 
-  updateShopBadge() {
-    const affordable = hasAffordableUpgrade(
-      this.economy.ink,
-      this.highestMilestone,
-      this.upgradeLevels,
-      this.unlockedUniques,
-    )
-    this.shopBtn.classList.toggle('has-available', affordable)
+  renderShopUI() {
+    renderShop({
+      open: this.shopOpen,
+      ink: this.economy.ink,
+      milestone: this.highestMilestone,
+      upgradeLevels: this.upgradeLevels,
+      ownedUniques: this.unlockedUniques,
+      showButton: this.shelf.submittedWords.length > 0 || this.highestMilestone !== null,
+      onOpen: () => this.openShop(),
+      onClose: () => this.closeShop(),
+      onBuyTiered: (track) => this.buyTieredUpgrade(track),
+      onBuyUnique: (id) => this.buyUniqueUpgrade(id),
+    })
   }
 
   getBasinCapacity(): number {
@@ -459,6 +438,7 @@ export class Game {
     this.upgradeLevels[track] = level + 1
     this.applyUpgrade(track)
     saveState(this.buildSaveState())
+    this.renderShopUI()
   }
 
   buyUniqueUpgrade(id: UniqueUpgrade) {
@@ -469,6 +449,7 @@ export class Game {
     this.unlockedUniques.add(id)
     this.applyUniqueUpgrade(id)
     saveState(this.buildSaveState())
+    this.renderShopUI()
   }
 
   applyUniqueUpgrade(id: UniqueUpgrade) {
@@ -605,7 +586,7 @@ export class Game {
         score.bonuses.map((b) => b.label).join(', '),
       )
       this.checkMilestones()
-      this.shopBtn.style.display = 'block'
+      this.renderShopUI()
     } else {
       this.economy.resetStreak()
       this.dumpShelfLetters(result.letters)
@@ -817,10 +798,9 @@ export class Game {
     this.autoMiner.update(frameDt)
     this.apprenticeShelf?.update(frameDt)
     this.flushSpawnQueue()
-    this.updateShopBadge()
-    if (this.shopOpen && now - this.lastShopRefresh > 500) {
+    if (now - this.lastShopRefresh > 500) {
       this.lastShopRefresh = now
-      this.shop.update()
+      this.renderShopUI()
     }
     this.updateOverflow(frameDt)
     this.killOffscreen()

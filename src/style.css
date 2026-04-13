@@ -108,7 +108,6 @@ html, body {
   cursor: pointer;
   z-index: 21;
   transition: background 0.15s, color 0.15s, right 0.25s ease;
-  display: none;
 }
 
 .shop-btn.shop-open {

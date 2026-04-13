@@ -12,6 +12,7 @@
         "opentype.js": "^1.3.4",
         "pixi.js": "^8.17.1",
         "poly-decomp-es": "^0.4.2",
+        "preact": "^10.29.1",
         "vite": "^8.0.8",
       },
       "devDependencies": {
@@ -428,6 +429,8 @@
     "poly-decomp-es": ["poly-decomp-es@0.4.2", "", {}, "sha512-akjZkaTeyfECMNkMqv0g9gFiU2HjpZ5ubJA/aczw1ILdgWQbv1OPwCi05/9JbY2GnGpjm9k85Jdbd/j/p/lg/g=="],
 
     "postcss": ["postcss@8.5.9", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-7a70Nsot+EMX9fFU3064K/kdHWZqGVY+BADLyXc8Dfv+mTLLVl6JzJpPaCZ2kQL9gIJvKXSLMHhqdRRjwQeFtw=="],
+
+    "preact": ["preact@10.29.1", "", {}, "sha512-gQCLc/vWroE8lIpleXtdJhTFDogTdZG9AjMUpVkDf2iTCNwYNWA+u16dL41TqUDJO4gm2IgrcMv3uTpjd4Pwmg=="],
 
     "prelude-ls": ["prelude-ls@1.2.1", "", {}, "sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g=="],
 
