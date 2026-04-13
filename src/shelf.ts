@@ -451,6 +451,5 @@ export class Shelf {
       this.errorText.alpha = Math.max(0, tooltipAlpha)
       this.container.addChild(this.errorText)
     }
-
   }
 }

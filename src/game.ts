@@ -7,12 +7,7 @@ import { LetterRenderer } from './render'
 import { Economy } from './economy'
 import { Hud } from './hud'
 import { loadState, startAutoSave, type GameState } from './state'
-import {
-  getUpgradeValue,
-  getUpgradeCost,
-  milestoneReached,
-  UNIQUE_UPGRADES,
-} from './upgrades'
+import { getUpgradeValue, getUpgradeCost, milestoneReached, UNIQUE_UPGRADES } from './upgrades'
 import { renderShop } from './shop.tsx'
 import { renderDictionaryScreen } from './dictionary-screen.tsx'
 import { AutoMiner } from './auto-miner'
@@ -20,14 +15,7 @@ import { ApprenticeShelf } from './apprentice-shelf'
 import { saveState } from './state'
 import { createDevPanel } from './debug'
 import { MarkovGenerator, type MarkovData } from './markov'
-import {
-  SCALE,
-  COLORS,
-  FIXED_DT,
-  MAX_SUBSTEPS,
-  FOREGROUND_MS,
-  BASIN,
-} from './constants'
+import { SCALE, COLORS, FIXED_DT, MAX_SUBSTEPS, FOREGROUND_MS, BASIN } from './constants'
 import type {
   GlyphData,
   LetterBody,
@@ -249,8 +237,13 @@ export class Game {
     // Rebuild scene graph now that mining exists
     this.rebuildSceneGraph()
 
-    // Auto-miner
-    this.autoMiner = new AutoMiner(this.mining)
+    // Auto-miner — spawns frequency-weighted letters when idle
+    this.autoMiner = new AutoMiner((char) => {
+      const x = this.width * (0.1 + Math.random() * 0.8)
+      const y = -30 - Math.random() * 40
+      this.spawnLetter(char, x, y)
+      this.economy.creditLetterMined()
+    })
 
     // Apply all upgrade side effects
     this.applyAllUpgrades()
@@ -547,7 +540,6 @@ export class Game {
     }
   }
 
-
   siphonLetter(key: string) {
     const shelfY = this.shelf.y / SCALE
     let best: LetterBody | null = null
@@ -741,7 +733,11 @@ export class Game {
     const h = this.height
 
     // Lazily create / resize the offscreen canvas
-    if (!this.vignetteCanvas || this.vignetteCanvas.width !== w * dpr || this.vignetteCanvas.height !== h * dpr) {
+    if (
+      !this.vignetteCanvas ||
+      this.vignetteCanvas.width !== w * dpr ||
+      this.vignetteCanvas.height !== h * dpr
+    ) {
       this.vignetteCanvas = new OffscreenCanvas(w * dpr, h * dpr)
       this.vignetteCtx = this.vignetteCanvas.getContext('2d')
     }
