@@ -32,6 +32,9 @@ export class Shelf {
   /** Pointer to economy's discovered words set. */
   discoveredWords: Set<string> | null = null
 
+  /** When true, shows validation status and blocks invalid submissions. */
+  wordCheckEnabled = false
+
   submittedWords: string[] = []
   onSubmit: (() => void) | null = null
 
@@ -148,6 +151,45 @@ export class Shelf {
     return this.letters.map((l) => l.char).join('')
   }
 
+  /** Returns lowercase chars that would extend the current shelf word into a valid word or prefix. */
+  getCompletionChars(): Set<string> {
+    const result = new Set<string>()
+    if (this.letters.length < 3 || !this.dictionary || !this.prefixes) return result
+    const current = this.currentWord()
+    for (let c = 97; c <= 122; c++) {
+      const ch = String.fromCharCode(c)
+      const extended = current + ch
+      if (this.dictionary.has(extended) || this.prefixes.has(extended)) {
+        result.add(ch)
+      }
+    }
+    return result
+  }
+
+  /** Like getCompletionChars but only considers paths leading to undiscovered words. */
+  getCompassChars(discovered: Set<string>): {
+    available: Set<string>
+    missingChars: Set<string>
+  } {
+    const available = new Set<string>()
+    const allValid = new Set<string>()
+    if (this.letters.length < 3 || !this.dictionary || !this.prefixes) {
+      return { available, missingChars: new Set() }
+    }
+    const current = this.currentWord()
+    for (let c = 97; c <= 122; c++) {
+      const ch = String.fromCharCode(c)
+      const extended = current + ch
+      // Must lead to an undiscovered word (either directly or as a prefix of one)
+      const isWord = this.dictionary.has(extended) && !discovered.has(extended)
+      const isPrefix = this.prefixes.has(extended)
+      if (isWord || isPrefix) {
+        allValid.add(ch)
+      }
+    }
+    return { available: allValid, missingChars: new Set() }
+  }
+
   private validate() {
     if (this.letters.length < 4) {
       this.wordStatus = 'none'
@@ -183,7 +225,13 @@ export class Shelf {
       return { valid: true, word, letters: [], submittedLetters }
     }
 
-    // Invalid — return letters to be dumped
+    // With Word Check: block invalid submission, keep letters
+    if (this.wordCheckEnabled) {
+      this.flashError('Not a word')
+      return { valid: false, word, letters: [], submittedLetters: [] }
+    }
+
+    // Without Word Check: dump letters back to basin
     const cleared = [...this.letters]
     this.letters = []
     this.wordStatus = 'none'

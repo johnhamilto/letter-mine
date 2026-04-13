@@ -11,6 +11,9 @@ export class Economy {
   discoveredRoots = new Set<string>()
   streak = 0
 
+  /** Ink multiplier bonus fraction (0 = none, 1.0 = +100%). Set by game from upgrade level. */
+  inkMultiplierBonus = 0
+
   /** Last score result for HUD flash. */
   lastScore: ScoreResult | null = null
   lastScoreTime = 0
@@ -64,6 +67,11 @@ export class Economy {
     // Repeat word penalty
     if (isRepeat) {
       finalInk *= SCORING.repeatWordPenalty
+    }
+
+    // Ink multiplier upgrade
+    if (this.inkMultiplierBonus > 0) {
+      finalInk *= 1 + this.inkMultiplierBonus
     }
 
     finalInk = Math.floor(finalInk)

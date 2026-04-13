@@ -25,7 +25,7 @@ interface MiningOptions {
 }
 
 export class MiningPrompt {
-  private words: string[]
+  words: string[]
   private onLetterMined: MiningOptions['onLetterMined']
 
   paused = false
@@ -137,6 +137,30 @@ export class MiningPrompt {
     } else {
       pc.mistakeTime = now
     }
+  }
+
+  /** Auto-mine the next character. Called by AutoMiner. */
+  mineNext() {
+    const info = this.charAtGlobal(this.cursorPos)
+    if (!info) return
+
+    const pc = info.line.chars[info.charIdx]!
+    const now = performance.now()
+
+    if (pc.char === ' ') {
+      pc.mined = true
+      pc.mineTime = now
+      this.cursorPos++
+      return
+    }
+
+    pc.mined = true
+    pc.mineTime = now
+    const pos = this.charScreenPositions.get(this.cursorPos)
+    if (pos) {
+      this.onLetterMined(pc.char, pos.x, pos.y)
+    }
+    this.cursorPos++
   }
 
   render(ctx: CanvasRenderingContext2D, screenWidth: number) {

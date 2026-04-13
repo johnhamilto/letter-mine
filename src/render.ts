@@ -41,6 +41,7 @@ export class LetterRenderer {
     letter: LetterBody,
     dpr: number,
     highlighted = false,
+    glowColor: string | null = null,
   ) {
     const pos = letter.body.translation()
     const rot = letter.body.rotation()
@@ -60,6 +61,9 @@ export class LetterRenderer {
       if (highlighted) {
         ctx.shadowColor = COLORS.shelf
         ctx.shadowBlur = 16
+      } else if (glowColor) {
+        ctx.shadowColor = glowColor
+        ctx.shadowBlur = 12
       }
 
       ctx.drawImage(
@@ -70,7 +74,7 @@ export class LetterRenderer {
         oc.height / dpr,
       )
 
-      if (highlighted) {
+      if (highlighted || glowColor) {
         ctx.shadowColor = 'transparent'
         ctx.shadowBlur = 0
       }

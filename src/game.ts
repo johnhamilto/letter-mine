@@ -9,6 +9,8 @@ import { Hud } from './hud'
 import { loadState, startAutoSave, type GameState } from './state'
 import { getUpgradeValue, getUpgradeCost, milestoneReached, UNIQUE_UPGRADES } from './upgrades'
 import { Shop } from './shop'
+import { AutoMiner } from './auto-miner'
+import { ApprenticeShelf } from './apprentice-shelf'
 import { saveState } from './state'
 import { createDevPanel } from './debug'
 import { MINING_WORDS } from './data/words'
@@ -69,6 +71,13 @@ export class Game {
   shopOpen = false
   shop: Shop
   shopBtn: HTMLButtonElement
+  private lastShakeTime = 0
+  autoMiner: AutoMiner
+  siphonMode = false
+  apprenticeShelf: ApprenticeShelf | null = null
+
+  /** Dictionary words bucketed by tier for mining quality upgrades. */
+  private wordsByTier: Map<number, string[]> = new Map()
 
   private spawnQueue: Array<{ char: string; x: number; y: number }> = []
 
@@ -114,13 +123,15 @@ export class Game {
     const reached = milestoneReached(this.economy.totalInkEarned)
     if (reached) this.highestMilestone = reached
 
-    // Shelf — width from upgrade level
-    const shelfSlots = getUpgradeValue('shelfWidth', this.upgradeLevels.shelfWidth)
-    this.shelf = new Shelf(shelfSlots)
+    // Shelf
+    this.shelf = new Shelf()
     this.shelf.onSubmit = () => this.submitShelf()
     if (saved) {
       this.shelf.submittedWords = saved.submittedWords
     }
+
+    // Apply all upgrade side effects (sets shelf width, ink multiplier, etc.)
+    this.applyAllUpgrades()
 
     // Shop
     this.shop = new Shop({
@@ -208,6 +219,9 @@ export class Game {
       },
     })
 
+    // Auto-miner (rate set by applyAllUpgrades)
+    this.autoMiner = new AutoMiner(this.mining)
+
     // Drag controller
     this.drag = new DragController(
       canvas,
@@ -249,10 +263,28 @@ export class Game {
       // Block game input when shop is open
       if (this.shopOpen) return
 
+      // Siphon: Tab toggles focus mode
+      if (e.key === 'Tab' && this.unlockedUniques.has('siphon')) {
+        e.preventDefault()
+        this.siphonMode = !this.siphonMode
+        this.mining.paused = this.siphonMode
+        return
+      }
+
+      // Siphon mode: typing pulls letters from basin to shelf
+      if (this.siphonMode && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        this.siphonLetter(e.key)
+        return
+      }
+
       if (e.key === 'Enter') {
         this.submitShelf()
       } else if (e.key === 'Escape') {
         this.dumpShelfLetters()
+      } else if (e.key === ' ' && e.shiftKey && this.unlockedUniques.has('basinShake')) {
+        e.preventDefault()
+        this.basinShake()
       }
     })
 
@@ -344,6 +376,22 @@ export class Game {
       const words = new Set(Object.keys(data))
       this.shelf.loadDictionary(words)
       this.shelf.discoveredWords = this.economy.discoveredWords
+
+      // Bucket words by tier for mining quality (only short common-ish words)
+      for (const [word, entry] of Object.entries(data)) {
+        if (word.length < 2 || word.length > 8) continue
+        const tier = entry.tier
+        let bucket = this.wordsByTier.get(tier)
+        if (!bucket) {
+          bucket = []
+          this.wordsByTier.set(tier, bucket)
+        }
+        bucket.push(word)
+      }
+
+      // Apply mining quality now that word tiers are loaded
+      this.updateMiningWords()
+
       console.log(`Dictionary loaded: ${words.size} words`)
     } catch {
       console.warn('Dictionary not found — shelf validation disabled')
@@ -402,7 +450,45 @@ export class Game {
     if (!def) return
     if (!this.economy.spendInk(def.cost)) return
     this.unlockedUniques.add(id)
+    this.applyUniqueUpgrade(id)
     saveState(this.buildSaveState())
+  }
+
+  applyUniqueUpgrade(id: UniqueUpgrade) {
+    switch (id) {
+      case 'wordCheck':
+        this.shelf.wordCheckEnabled = true
+        break
+      case 'apprenticeShelf':
+        if (!this.apprenticeShelf) {
+          this.apprenticeShelf = new ApprenticeShelf({
+            getLetters: () => this.letters,
+            removeLetter: (letter) => {
+              this.world.removeRigidBody(letter.body)
+              const idx = this.letters.indexOf(letter)
+              if (idx >= 0) this.letters.splice(idx, 1)
+              this.foregroundLetters.delete(letter)
+            },
+            getDiscoveredWords: () => this.economy.discoveredWords,
+            getDictionary: () => this.dictionary,
+            onWordAssembled: (word) => {
+              const entry = this.dictionary[word]
+              this.economy.scoreWord(word, [], entry)
+              this.checkMilestones()
+            },
+          })
+          this.apprenticeShelf.maxLength = getUpgradeValue(
+            'apprenticeShelfWidth',
+            this.upgradeLevels.apprenticeShelfWidth,
+          )
+        }
+        break
+      case 'autoDiscovery':
+        if (this.apprenticeShelf) {
+          this.apprenticeShelf.canDiscover = true
+        }
+        break
+    }
   }
 
   applyUpgrade(track: UpgradeTrack) {
@@ -414,6 +500,95 @@ export class Game {
       case 'shelfWidth':
         this.shelf.maxSlots = value
         break
+      case 'inkMultiplier':
+        this.economy.inkMultiplierBonus = value
+        break
+      case 'miningQuality':
+        this.updateMiningWords()
+        break
+      case 'autoMiner':
+        this.autoMiner.rate = value
+        break
+      case 'apprenticeShelfWidth':
+        if (this.apprenticeShelf) {
+          this.apprenticeShelf.maxLength = value
+        }
+        break
+    }
+  }
+
+  /** Siphon: pull a matching letter from basin onto shelf. */
+  siphonLetter(key: string) {
+    // Find the matching letter nearest the shelf
+    const shelfY = this.shelf.y / SCALE
+    let best: LetterBody | null = null
+    let bestDist = Infinity
+
+    for (const letter of this.letters) {
+      if (letter.char.toLowerCase() !== key.toLowerCase()) continue
+      const pos = letter.body.translation()
+      const dist = Math.abs(pos.y - shelfY)
+      if (dist < bestDist) {
+        bestDist = dist
+        best = letter
+      }
+    }
+
+    if (!best) return
+
+    const placed = this.shelf.placeLetter(best.char, best.isUpper)
+    if (!placed) return
+
+    // Remove from physics
+    this.world.removeRigidBody(best.body)
+    const idx = this.letters.indexOf(best)
+    if (idx >= 0) this.letters.splice(idx, 1)
+    this.foregroundLetters.delete(best)
+  }
+
+  /** Rebuild the mining word pool based on mining quality level. */
+  updateMiningWords() {
+    const minTier = getUpgradeValue('miningQuality', this.upgradeLevels.miningQuality)
+    const pool: string[] = [...MINING_WORDS] // always include the base common words
+
+    // Add dictionary words from eligible tiers
+    for (let tier = 4; tier >= minTier; tier--) {
+      const bucket = this.wordsByTier.get(tier)
+      if (!bucket) continue
+      // Sample: tier 4/3 = all, tier 2 = 10%, tier 1 = 15%, tier 0 = 5%
+      const sampleRate = tier >= 3 ? 1.0 : tier === 2 ? 0.1 : tier === 1 ? 0.15 : 0.05
+      if (sampleRate >= 1) {
+        pool.push(...bucket)
+      } else {
+        for (const word of bucket) {
+          if (Math.random() < sampleRate) pool.push(word)
+        }
+      }
+    }
+
+    this.mining.words = pool
+  }
+
+  basinShake() {
+    const now = performance.now()
+    if (now - this.lastShakeTime < 3000) return // 3s cooldown
+    this.lastShakeTime = now
+    const R = this.RAPIER
+    for (const letter of this.letters) {
+      const ix = (Math.random() - 0.5) * 8
+      const iy = -(Math.random() * 4 + 2)
+      letter.body.applyImpulse(new R.Vector2(ix, iy), true)
+      letter.body.applyTorqueImpulse((Math.random() - 0.5) * 2, true)
+    }
+  }
+
+  /** Apply all upgrade side effects (called on load). */
+  applyAllUpgrades() {
+    for (const track of Object.keys(this.upgradeLevels) as UpgradeTrack[]) {
+      this.applyUpgrade(track)
+    }
+    for (const id of this.unlockedUniques) {
+      this.applyUniqueUpgrade(id)
     }
   }
 
@@ -662,6 +837,8 @@ export class Game {
     const frameDt = Math.min((now - this.lastTime) / 1000, 0.1)
     this.lastTime = now
 
+    this.autoMiner.update(frameDt)
+    this.apprenticeShelf?.update(frameDt)
     this.flushSpawnQueue()
     this.updateOverflow(frameDt)
     this.killOffscreen()
@@ -702,11 +879,33 @@ export class Game {
       if (now - time > FOREGROUND_MS) this.foregroundLetters.delete(letter)
     }
 
+    // Word compass: highlight next chars for undiscovered words
+    const compassChars = this.unlockedUniques.has('wordCompass')
+      ? this.shelf.getCompassChars(this.economy.discoveredWords).available
+      : null
+
+    // Word ghost: completion chars for any valid word
+    const ghostChars =
+      this.unlockedUniques.has('wordGhost') && !compassChars
+        ? this.shelf.getCompletionChars()
+        : null
+
+    // Vowel bloom + ghost/compass glow
+    const vowelBloom = this.unlockedUniques.has('vowelBloom')
+    const vowels = 'aeiouAEIOU'
+    const getGlow = (letter: LetterBody): string | null => {
+      const lc = letter.char.toLowerCase()
+      if (compassChars?.has(lc)) return '#4A7C59' // green — discovery path
+      if (ghostChars?.has(lc)) return '#6B4423' // burnt sienna — any completion
+      if (vowelBloom && vowels.includes(letter.char)) return '#8B7355'
+      return null
+    }
+
     // Basin letters (behind shelf)
     for (const letter of this.letters) {
       if (letter === dragging) continue
       if (this.foregroundLetters.has(letter)) continue
-      this.renderer.renderLetter(ctx, letter, dpr, letter === hovered)
+      this.renderer.renderLetter(ctx, letter, dpr, letter === hovered, getGlow(letter))
     }
 
     // Shelf (foreground)
@@ -719,7 +918,7 @@ export class Game {
         this.foregroundLetters.delete(letter)
         continue
       }
-      this.renderer.renderLetter(ctx, letter, dpr, letter === hovered)
+      this.renderer.renderLetter(ctx, letter, dpr, letter === hovered, getGlow(letter))
     }
 
     // Dragged letter (topmost)
