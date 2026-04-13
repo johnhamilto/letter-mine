@@ -62,9 +62,22 @@ export function loadState(): GameState | null {
       }
     }
 
+    // Migration: miningQuality was repurposed from "min tier" to "rare letter chance".
+    // Old saves may have levels that map to unintended substitution rates. Reset to 0
+    // and refund the ink spent (costs were [1500, 6000, 20000, 80000]).
+    let ink = obj.ink as number
+    let totalInkEarned = typeof obj.totalInkEarned === 'number' ? obj.totalInkEarned : 0
+    if (upgradeLevels.miningQuality > 0) {
+      const refundTable = [0, 1500, 7500, 27500, 107500] as const
+      const refund = refundTable[Math.min(upgradeLevels.miningQuality, 4)] ?? 0
+      upgradeLevels.miningQuality = 0
+      ink += refund
+      totalInkEarned += refund
+    }
+
     return {
-      ink: obj.ink,
-      totalInkEarned: typeof obj.totalInkEarned === 'number' ? obj.totalInkEarned : 0,
+      ink,
+      totalInkEarned,
       discoveredWords: obj.discoveredWords as string[],
       discoveredRoots: Array.isArray(obj.discoveredRoots) ? (obj.discoveredRoots as string[]) : [],
       streak: typeof obj.streak === 'number' ? obj.streak : 0,
