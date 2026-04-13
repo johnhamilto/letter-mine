@@ -1,16 +1,16 @@
 /**
  * Spring-based mouse drag for physics bodies.
  * Click-to-place on shelf, drag to reorder, pull letters off shelf.
+ * Uses AABB hit testing on known positions (no Rapier on main thread).
  */
 
-import type RAPIER_NS from '@dimforge/rapier2d-compat'
 import type { LetterBody } from './types'
 import type { Shelf } from './shelf'
-import { SCALE, DRAG } from './constants'
+import type { PhysicsProxy } from './physics'
+import { SCALE, DRAG, GLYPH_TO_PHYSICS } from './constants'
 
 export class DragController {
-  private world: RAPIER_NS.World
-  private RAPIER: typeof RAPIER_NS
+  private physics: PhysicsProxy
   private canvas: HTMLCanvasElement
   private letters: LetterBody[]
   private shelf: Shelf
@@ -27,8 +27,7 @@ export class DragController {
 
   constructor(
     canvas: HTMLCanvasElement,
-    RAPIER: typeof RAPIER_NS,
-    world: RAPIER_NS.World,
+    physics: PhysicsProxy,
     letters: LetterBody[],
     shelf: Shelf,
     onLetterRemoved: (letter: LetterBody) => void,
@@ -36,8 +35,7 @@ export class DragController {
     onLetterReleased: (letter: LetterBody) => void,
   ) {
     this.canvas = canvas
-    this.RAPIER = RAPIER
-    this.world = world
+    this.physics = physics
     this.letters = letters
     this.shelf = shelf
     this.onLetterRemoved = onLetterRemoved
@@ -58,22 +56,20 @@ export class DragController {
   }
 
   private findLetterAt(px: number, py: number): LetterBody | null {
-    const point = new this.RAPIER.Vector2(px, py)
-    let found: LetterBody | null = null
-
-    this.world.intersectionsWithPoint(point, (collider) => {
-      const parentBody = collider.parent()
-      if (parentBody !== null) {
-        const letter = this.letters.find((l) => l.body.handle === parentBody.handle)
-        if (letter) {
-          found = letter
-          return false
-        }
+    for (let i = this.letters.length - 1; i >= 0; i--) {
+      const letter = this.letters[i]!
+      const halfW = (letter.glyph.width * GLYPH_TO_PHYSICS * letter.renderScale) / 2
+      const halfH = (letter.glyph.height * GLYPH_TO_PHYSICS * letter.renderScale) / 2
+      if (
+        px >= letter.x - halfW &&
+        px <= letter.x + halfW &&
+        py >= letter.y - halfH &&
+        py <= letter.y + halfH
+      ) {
+        return letter
       }
-      return true
-    })
-
-    return found
+    }
+    return null
   }
 
   private onMouseDown = (e: MouseEvent) => {
@@ -81,13 +77,11 @@ export class DragController {
     const screenX = e.clientX - rect.left
     const screenY = e.clientY - rect.top
 
-    // Submit button
     if (this.shelf.isSubmitButtonAt(screenX, screenY)) {
       this.shelf.onSubmit?.()
       return
     }
 
-    // Check shelf letters (foreground)
     const shelfIdx = this.shelf.letterIndexAt(screenX, screenY)
     if (shelfIdx >= 0) {
       const sl = this.shelf.removeLetter(shelfIdx)
@@ -102,15 +96,14 @@ export class DragController {
           this.mouseStart.y = screenY
           this.localAnchor.x = 0
           this.localAnchor.y = 0
-          letter.body.wakeUp()
-          letter.body.setGravityScale(DRAG.gravityScale, true)
+          this.physics.wakeUp(letter.id)
+          this.physics.setGravityScale(letter.id, DRAG.gravityScale)
           this.canvas.style.cursor = 'grabbing'
         }
       }
       return
     }
 
-    // Then physics letters
     const pos = this.getPhysicsPos(e)
     const letter = this.findLetterAt(pos.x, pos.y)
 
@@ -123,17 +116,16 @@ export class DragController {
       this.mouseStart.x = screenX
       this.mouseStart.y = screenY
 
-      const bodyPos = letter.body.translation()
-      const rot = letter.body.rotation()
+      const rot = letter.rotation
       const cos = Math.cos(-rot)
       const sin = Math.sin(-rot)
-      const dx = pos.x - bodyPos.x
-      const dy = pos.y - bodyPos.y
+      const dx = pos.x - letter.x
+      const dy = pos.y - letter.y
       this.localAnchor.x = dx * cos - dy * sin
       this.localAnchor.y = dx * sin + dy * cos
 
-      letter.body.wakeUp()
-      letter.body.setGravityScale(DRAG.gravityScale, true)
+      this.physics.wakeUp(letter.id)
+      this.physics.setGravityScale(letter.id, DRAG.gravityScale)
 
       this.canvas.style.cursor = 'grabbing'
     }
@@ -176,16 +168,15 @@ export class DragController {
     const screenY = e.clientY - rect.top
     const letter = this.dragging
 
-    letter.body.setGravityScale(1.0, true)
+    this.physics.setGravityScale(letter.id, 1.0)
 
-    // Drop on shelf (at nearest slot) or click-to-place (append to end)
     if (this.shelf.isOverShelf(screenX, screenY) || !this.didDrag) {
       const insertIdx = this.didDrag
         ? this.shelf.nearestSlotIndex(screenX)
         : this.shelf.letters.length
       const placed = this.shelf.insertLetter(insertIdx, letter.char, letter.isUpper)
       if (placed) {
-        this.world.removeRigidBody(letter.body)
+        this.physics.remove(letter.id)
         this.onLetterRemoved(letter)
         this.dragging = null
         this.canvas.style.cursor = 'default'
@@ -209,23 +200,19 @@ export class DragController {
   applySpringForce() {
     if (!this.dragging) return
 
-    const body = this.dragging.body
-    const bodyPos = body.translation()
-    const rot = body.rotation()
+    const letter = this.dragging
+    const rot = letter.rotation
 
     const cos = Math.cos(rot)
     const sin = Math.sin(rot)
     const ax = this.localAnchor.x * cos - this.localAnchor.y * sin
     const ay = this.localAnchor.x * sin + this.localAnchor.y * cos
 
-    const dx = this.mouseTarget.x - (bodyPos.x + ax)
-    const dy = this.mouseTarget.y - (bodyPos.y + ay)
+    const dx = this.mouseTarget.x - (letter.x + ax)
+    const dy = this.mouseTarget.y - (letter.y + ay)
 
-    body.setLinvel(
-      new this.RAPIER.Vector2(dx * DRAG.linearResponse, dy * DRAG.linearResponse),
-      true,
-    )
+    this.physics.setLinvel(letter.id, dx * DRAG.linearResponse, dy * DRAG.linearResponse)
 
-    body.setAngvel((ax * dy - ay * dx) * DRAG.angularResponse, true)
+    this.physics.setAngvel(letter.id, (ax * dy - ay * dx) * DRAG.angularResponse)
   }
 }

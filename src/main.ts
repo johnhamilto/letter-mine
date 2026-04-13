@@ -1,18 +1,15 @@
-import RAPIER from '@dimforge/rapier2d-compat'
 import { Application } from 'pixi.js'
+import { PhysicsProxy } from './physics'
 import { Game } from './game'
 
 async function main() {
   const base = import.meta.env.BASE_URL
 
-  await Promise.all([
-    RAPIER.init(),
-    (async () => {
-      const font = new FontFace('Playfair Display', `url(${base}fonts/PlayfairDisplay.ttf)`)
-      await font.load()
-      document.fonts.add(font)
-    })(),
-  ])
+  await (async () => {
+    const font = new FontFace('Playfair Display', `url(${base}fonts/PlayfairDisplay.ttf)`)
+    await font.load()
+    document.fonts.add(font)
+  })()
 
   const glyphData = await fetch(`${base}glyphs.json`).then((r) => r.json())
 
@@ -34,7 +31,10 @@ async function main() {
   if (!container) throw new Error('No #game container')
   container.appendChild(app.canvas)
 
-  const game = new Game(app, RAPIER, glyphData)
+  const physics = new PhysicsProxy()
+  await physics.init(glyphData, window.innerWidth, window.innerHeight)
+
+  const game = new Game(app, physics, glyphData)
   ;(window as unknown as Record<string, unknown>).__game = game
   game.start()
 }

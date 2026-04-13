@@ -1,65 +1,133 @@
-import type RAPIER_NS from '@dimforge/rapier2d-compat'
-import { GLYPH_TO_PHYSICS, LOWERCASE_SCALE, UPPERCASE_SCALE } from './constants'
-import type { GlyphData, LetterBody } from './types'
+/**
+ * Physics proxy — sends spawn/remove/force messages to the physics worker.
+ * No Rapier imports on the main thread.
+ */
+
+import { SCALE, LOWERCASE_SCALE, UPPERCASE_SCALE, PHYSICS } from './constants'
+import type {
+  GlyphData,
+  LetterBody,
+  PhysicsWorkerInMsg,
+  PhysicsWorkerOutMsg,
+  BodyState,
+} from './types'
 
 export type { LetterBody }
 
-export function createLetterBody(
-  RAPIER: typeof RAPIER_NS,
-  world: RAPIER_NS.World,
-  glyph: GlyphData,
-  x: number,
-  y: number,
-): LetterBody | null {
-  const isUpper = glyph.char === glyph.char.toUpperCase()
-  const renderScale = isUpper ? UPPERCASE_SCALE : LOWERCASE_SCALE
-  const physScale = GLYPH_TO_PHYSICS * renderScale
+export class PhysicsProxy {
+  private worker: Worker
+  private nextId = 1
+  private onStepResult: ((bodies: BodyState[]) => void) | null = null
+  private onReady: (() => void) | null = null
 
-  const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-    .setTranslation(x, y)
-    .setAngularDamping(2.0)
-    .setLinearDamping(0.3)
-    .setCcdEnabled(true)
-
-  const body = world.createRigidBody(bodyDesc)
-
-  const cx = glyph.width / 2
-  const cy = glyph.height / 2
-
-  let collidersCreated = 0
-
-  for (const part of glyph.convexParts) {
-    if (part.length < 6) continue
-
-    const points = new Float32Array(part.length)
-    for (let i = 0; i < part.length; i += 2) {
-      points[i] = (part[i]! - cx) * physScale
-      points[i + 1] = (part[i + 1]! - cy) * physScale
-    }
-
-    const colliderDesc = RAPIER.ColliderDesc.convexHull(points)
-    if (colliderDesc) {
-      colliderDesc.setDensity(isUpper ? 2.0 : 1.0)
-      colliderDesc.setRestitution(0.0)
-      colliderDesc.setFriction(0.6)
-      try {
-        world.createCollider(colliderDesc, body)
-        collidersCreated++
-      } catch {
-        // Skip degenerate shapes Rapier rejects
+  constructor() {
+    this.worker = new Worker(new URL('./physics-worker.ts', import.meta.url), { type: 'module' })
+    this.worker.onmessage = (e: MessageEvent<PhysicsWorkerOutMsg>) => {
+      const msg = e.data
+      switch (msg.type) {
+        case 'stepResult':
+          this.onStepResult?.(msg.bodies)
+          break
+        case 'ready':
+          this.onReady?.()
+          break
       }
     }
   }
 
-  if (collidersCreated === 0) {
-    const halfW = (glyph.width * physScale) / 2
-    const halfH = (glyph.height * physScale) / 2
-    const colliderDesc = RAPIER.ColliderDesc.cuboid(halfW, halfH)
-      .setDensity(isUpper ? 2.0 : 1.0)
-      .setRestitution(0.0)
-      .setFriction(0.6)
-    world.createCollider(colliderDesc, body)
+  private send(msg: PhysicsWorkerInMsg) {
+    this.worker.postMessage(msg)
   }
 
-  return { body, glyph, char: glyph.char, isUpper, renderScale }
+  init(glyphs: Record<string, GlyphData>, wallWidth: number, wallHeight: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      this.onReady = () => {
+        this.onReady = null
+        resolve()
+      }
+      this.send({
+        type: 'init',
+        gravity: PHYSICS.gravity,
+        solverIterations: PHYSICS.solverIterations,
+        pgsIterations: PHYSICS.pgsIterations,
+        contactFrequency: PHYSICS.contactFrequency,
+        predictionDistance: PHYSICS.predictionDistance,
+        allowedLinearError: PHYSICS.allowedLinearError,
+        maxCcdSubsteps: PHYSICS.maxCcdSubsteps,
+        glyphs,
+        wallWidth,
+        wallHeight,
+      })
+    })
+  }
+
+  spawn(glyph: GlyphData, x: number, y: number): LetterBody {
+    const id = this.nextId++
+    const isUpper = glyph.char === glyph.char.toUpperCase()
+    const renderScale = isUpper ? UPPERCASE_SCALE : LOWERCASE_SCALE
+
+    this.send({
+      type: 'spawn',
+      id,
+      char: glyph.char,
+      x: x / SCALE,
+      y: y / SCALE,
+    })
+
+    return {
+      id,
+      glyph,
+      char: glyph.char,
+      isUpper,
+      renderScale,
+      x: x / SCALE,
+      y: y / SCALE,
+      rotation: 0,
+    }
+  }
+
+  remove(id: number) {
+    this.send({ type: 'remove', id })
+  }
+
+  setLinvel(id: number, vx: number, vy: number) {
+    this.send({ type: 'setLinvel', id, vx, vy })
+  }
+
+  setAngvel(id: number, angvel: number) {
+    this.send({ type: 'setAngvel', id, angvel })
+  }
+
+  setGravityScale(id: number, scale: number) {
+    this.send({ type: 'setGravityScale', id, scale })
+  }
+
+  wakeUp(id: number) {
+    this.send({ type: 'wakeUp', id })
+  }
+
+  applyImpulse(id: number, ix: number, iy: number) {
+    this.send({ type: 'applyImpulse', id, ix, iy })
+  }
+
+  applyTorqueImpulse(id: number, torque: number) {
+    this.send({ type: 'applyTorqueImpulse', id, torque })
+  }
+
+  rebuildWalls(width: number, height: number, isDraining: boolean) {
+    this.send({ type: 'rebuildWalls', width, height, isDraining })
+  }
+
+  removeFloor() {
+    this.send({ type: 'removeFloor' })
+  }
+
+  restoreFloor(height: number) {
+    this.send({ type: 'restoreFloor', height })
+  }
+
+  step(callback: (bodies: BodyState[]) => void) {
+    this.onStepResult = callback
+    this.send({ type: 'step' })
+  }
 }

@@ -1,13 +1,12 @@
 /** Glyph rendering with PixiJS — texture cache and sprite management. */
 
-import { Sprite, Texture, Graphics, Container } from 'pixi.js'
+import { Sprite, Texture, Container } from 'pixi.js'
 import { SCALE, COLORS, FONT_FAMILY } from './constants'
 import type { GlyphData, LetterBody } from './types'
 
 export class LetterRenderer {
   private textureCache = new Map<string, Texture>()
   private spriteMap = new Map<LetterBody, Sprite>()
-  private colliderMap = new Map<LetterBody, Graphics>()
   showGlyphs = true
   showColliders = false
 
@@ -66,12 +65,6 @@ export class LetterRenderer {
       sprite.destroy()
       this.spriteMap.delete(letter)
     }
-    const gfx = this.colliderMap.get(letter)
-    if (gfx) {
-      gfx.removeFromParent()
-      gfx.destroy()
-      this.colliderMap.delete(letter)
-    }
   }
 
   /** Get the sprite for a letter (may be null if not yet created). */
@@ -79,63 +72,21 @@ export class LetterRenderer {
     return this.spriteMap.get(letter)
   }
 
-  /** Update sprite position/rotation from Rapier body state. */
+  /** Update sprite position/rotation from physics state. */
   updateSprite(letter: LetterBody, highlighted = false, glowColor: string | null = null) {
     const sprite = this.spriteMap.get(letter)
     if (!sprite) return
 
-    const pos = letter.body.translation()
-    const rot = letter.body.rotation()
-
-    sprite.position.set(pos.x * SCALE, pos.y * SCALE)
-    sprite.rotation = rot
+    sprite.position.set(letter.x * SCALE, letter.y * SCALE)
+    sprite.rotation = letter.rotation
     sprite.visible = this.showGlyphs
 
-    // Glow / highlight via tint isn't ideal for colored glow, so we use filters
-    // For simplicity, we'll modulate alpha to hint at highlight
     if (highlighted) {
       sprite.alpha = 0.85
     } else if (glowColor) {
       sprite.alpha = 0.9
     } else {
       sprite.alpha = 1
-    }
-
-    // Collider debug
-    if (this.showColliders) {
-      let gfx = this.colliderMap.get(letter)
-      if (!gfx) {
-        gfx = new Graphics()
-        this.colliderMap.set(letter, gfx)
-        // Add collider gfx to same parent as sprite
-        const parent = sprite.parent
-        if (parent) parent.addChild(gfx)
-      }
-      gfx.clear()
-      gfx.position.set(pos.x * SCALE, pos.y * SCALE)
-      gfx.rotation = rot
-
-      const numColliders = letter.body.numColliders()
-      for (let c = 0; c < numColliders; c++) {
-        const collider = letter.body.collider(c)
-        const verts = collider.vertices()
-        if (verts && verts.length >= 4) {
-          gfx.setStrokeStyle({ width: 1.5 / letter.renderScale, color: 0xdc2828, alpha: 0.7 })
-          gfx.moveTo(verts[0]! * SCALE, verts[1]! * SCALE)
-          for (let i = 2; i < verts.length; i += 2) {
-            gfx.lineTo(verts[i]! * SCALE, verts[i + 1]! * SCALE)
-          }
-          gfx.closePath()
-          gfx.stroke()
-        }
-      }
-    } else {
-      const gfx = this.colliderMap.get(letter)
-      if (gfx) {
-        gfx.removeFromParent()
-        gfx.destroy()
-        this.colliderMap.delete(letter)
-      }
     }
   }
 
@@ -144,10 +95,6 @@ export class LetterRenderer {
     const sprite = this.spriteMap.get(letter)
     if (sprite && sprite.parent !== layer) {
       layer.addChild(sprite)
-    }
-    const gfx = this.colliderMap.get(letter)
-    if (gfx && gfx.parent !== layer) {
-      layer.addChild(gfx)
     }
   }
 }
