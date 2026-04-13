@@ -15,6 +15,7 @@ import { ApprenticeShelf } from './apprentice-shelf'
 import { saveState } from './state'
 import { createDevPanel } from './debug'
 import { MarkovGenerator, type MarkovData } from './markov'
+import { SoundManager } from './sound'
 import { SCALE, COLORS, FIXED_DT, MAX_SUBSTEPS, FOREGROUND_MS, BASIN } from './constants'
 import type {
   GlyphData,
@@ -48,6 +49,7 @@ export class Game {
   hud: Hud
   dictionary: Record<string, DictionaryEntry> = {}
   foregroundLetters = new Map<LetterBody, number>()
+  sound: SoundManager
 
   // Upgrade & progression state
   upgradeLevels: Record<UpgradeTrack, number> = {
@@ -69,6 +71,7 @@ export class Game {
   apprenticeShelf: ApprenticeShelf | null = null
 
   private spawnQueue: Array<{ char: string; x: number; y: number }> = []
+  private lastOverflowTick = 0
 
   // PixiJS layer containers (ordered back-to-front)
   private bgLayer = new Container()
@@ -99,6 +102,10 @@ export class Game {
 
     // Renderer
     this.renderer = new LetterRenderer()
+
+    // Sound
+    this.sound = new SoundManager()
+    this.sound.loadAll(`${import.meta.env.BASE_URL}`)
 
     // Economy
     this.economy = new Economy()
@@ -231,6 +238,7 @@ export class Game {
       onLetterMined: (char, screenX, screenY) => {
         this.spawnLetter(char, screenX, screenY)
         this.economy.creditLetterMined()
+        this.sound.playKeyClick()
       },
     })
     this.miningLayer = this.mining.container
@@ -263,6 +271,7 @@ export class Game {
         this.letterMap.delete(letter.id)
         this.foregroundLetters.delete(letter)
         this.renderer.removeSprite(letter)
+        this.sound.playShelfSnap()
       },
       (char, screenX, screenY) => {
         const glyph = this.glyphs[char]
@@ -609,9 +618,11 @@ export class Game {
       )
       this.checkMilestones()
       this.renderShopUI()
+      this.sound.playStamp()
     } else {
       this.economy.resetStreak()
       this.dumpShelfLetters(result.letters)
+      this.sound.playError()
     }
   }
 
@@ -684,10 +695,24 @@ export class Game {
     }
 
     if (count > max) {
+      const wasTicking = this.overflowCountdown > 0
       if (this.overflowCountdown <= 0) {
         this.overflowCountdown = BASIN.countdownSec
       }
+      const before = this.overflowCountdown
       this.overflowCountdown -= dt
+
+      const now = performance.now()
+      if (
+        wasTicking &&
+        this.overflowCountdown > 0 &&
+        Math.floor(before) !== Math.floor(this.overflowCountdown) &&
+        now - this.lastOverflowTick > 500
+      ) {
+        this.lastOverflowTick = now
+        this.sound.playTick()
+      }
+
       if (this.overflowCountdown <= 0) {
         this.isDraining = true
         this.overflowCountdown = 0
