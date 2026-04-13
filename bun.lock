@@ -5,10 +5,10 @@
     "": {
       "name": "letter-mine",
       "dependencies": {
+        "@chenglou/pretext": "^0.0.5",
         "@dimforge/rapier2d": "^0.19.3",
         "@dimforge/rapier2d-compat": "^0.19.3",
         "earcut": "^3.0.2",
-        "@chenglou/pretext": "github:chenglou/pretext",
         "opentype.js": "^1.3.4",
         "poly-decomp-es": "^0.4.2",
         "vite": "^8.0.8",
@@ -24,7 +24,7 @@
     },
   },
   "packages": {
-    "@chenglou/pretext": ["@chenglou/pretext@github:chenglou/pretext#b0b86e1", {}, "chenglou-pretext-b0b86e1", "sha512-6COswRGgIDhiFD1nD1RiJGie9164r1IW1RvTjBe0B084zkpxPXqgY0qL8rdeb3v1cEuarGnUklNHIY81RamrJw=="],
+    "@chenglou/pretext": ["@chenglou/pretext@0.0.5", "", {}, "sha512-A8GZN10REdFGsyuiUgLV8jjPDDFMg5GmgxGWV0I3igxBOnzj+jgz2VMmVD7g+SFyoctfeqHFxbNatKSzVRWtRg=="],
 
     "@dimforge/rapier2d": ["@dimforge/rapier2d@0.19.3", "", {}, "sha512-3dz6q3E3+Gbla1qje6/EhzlZ+nH/oQNpUASM4Mspk8DPPH7itxutpLJyvbu7Nci1aW1hhHp7eBZ3w3j45O5MiQ=="],
 

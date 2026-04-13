@@ -18,7 +18,7 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@chenglou/pretext": "github:chenglou/pretext",
+    "@chenglou/pretext": "^0.0.5",
     "@dimforge/rapier2d": "^0.19.3",
     "@dimforge/rapier2d-compat": "^0.19.3",
     "earcut": "^3.0.2",
