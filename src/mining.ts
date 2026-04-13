@@ -28,6 +28,8 @@ export class MiningPrompt {
   private words: string[]
   private onLetterMined: MiningOptions["onLetterMined"]
 
+  paused = false
+
   private lines: PromptLine[] = []
   private cursorPos = 0
   private wordCount = 0
@@ -101,6 +103,7 @@ export class MiningPrompt {
   }
 
   private handleKey = (e: KeyboardEvent) => {
+    if (this.paused) return
     if (e.ctrlKey || e.metaKey || e.altKey) return
     if (e.key.length !== 1) return
     e.preventDefault()

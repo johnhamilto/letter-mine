@@ -4,7 +4,11 @@ import wasm from "vite-plugin-wasm"
 export default defineConfig({
   plugins: [wasm()],
   publicDir: "public",
+  base: "/letter-mine/",
   server: {
     port: 3000,
+  },
+  build: {
+    target: "esnext",
   },
 })

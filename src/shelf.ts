@@ -6,9 +6,16 @@
 import { SCALE, COLORS, SHELF, FONT_FAMILY } from "./constants"
 import type { ShelfLetter, WordStatus } from "./types"
 
+interface SubmitResult {
+  valid: boolean
+  word: string
+  letters: ShelfLetter[] // letters to dump back on invalid
+  submittedLetters: ShelfLetter[] // letters that were on shelf (for scoring)
+}
+
 export class Shelf {
   letters: ShelfLetter[] = []
-  maxSlots = SHELF.maxSlots
+  maxSlots: number
 
   x = 0
   y = 0
@@ -19,19 +26,21 @@ export class Shelf {
   private dictionary: Set<string> | null = null
   private prefixes: Set<string> | null = null
 
+  /** Pointer to economy's discovered words set. */
+  discoveredWords: Set<string> | null = null
+
   submittedWords: string[] = []
   onSubmit: (() => void) | null = null
-
-  // Result flash
-  resultMessage = ""
-  resultSuccess = false
-  resultTime = 0
 
   // Submit button layout
   private btnX = 0
   private btnY = 0
   private btnW = 70
   private btnH = 32
+
+  constructor(initialSlots: number = SHELF.maxSlots) {
+    this.maxSlots = initialSlots
+  }
 
   loadDictionary(dict: Set<string>) {
     this.dictionary = dict
@@ -58,13 +67,22 @@ export class Shelf {
     }
   }
 
+  private get effectiveSlotWidth(): number {
+    return Math.min(SHELF.slotWidth, (this.shelfWidth - 20) / Math.max(this.maxSlots, 1))
+  }
+
+  private get effectiveSlotGap(): number {
+    return Math.min(SHELF.slotGap, this.effectiveSlotWidth * 0.12)
+  }
+
   slotPosition(index: number): { x: number; y: number } {
     const count = Math.max(this.letters.length, 1)
-    const totalWidth =
-      count * SHELF.slotWidth + Math.max(0, count - 1) * SHELF.slotGap
+    const sw = this.effectiveSlotWidth
+    const sg = this.effectiveSlotGap
+    const totalWidth = count * sw + Math.max(0, count - 1) * sg
     const startX = this.x + (this.shelfWidth - totalWidth) / 2
     return {
-      x: startX + index * (SHELF.slotWidth + SHELF.slotGap) + SHELF.slotWidth / 2,
+      x: startX + index * (sw + sg) + sw / 2,
       y: this.y,
     }
   }
@@ -132,40 +150,30 @@ export class Shelf {
     }
   }
 
-  /** Try to submit. Returns { valid, letters } — letters to dump back if invalid. */
-  submit(): { valid: boolean; word: string; letters: ShelfLetter[] } {
+  submit(): SubmitResult {
     if (this.letters.length === 0) {
-      return { valid: false, word: "", letters: [] }
+      return { valid: false, word: "", letters: [], submittedLetters: [] }
     }
 
     const word = this.displayWord()
-    const now = performance.now()
+    const submittedLetters = [...this.letters]
 
     if (this.letters.length < 4) {
-      this.resultMessage = "too short — 4 letters minimum"
-      this.resultSuccess = false
-      this.resultTime = now
-      return { valid: false, word, letters: [] }
+      return { valid: false, word, letters: [], submittedLetters: [] }
     }
 
     if (this.wordStatus === "valid") {
       this.submittedWords.push(word)
-      this.resultMessage = `"${word}"`
-      this.resultSuccess = true
-      this.resultTime = now
       this.letters = []
       this.wordStatus = "none"
-      return { valid: true, word, letters: [] }
+      return { valid: true, word, letters: [], submittedLetters }
     }
 
     // Invalid — return letters to be dumped
-    this.resultMessage = `"${word}" — not a word`
-    this.resultSuccess = false
-    this.resultTime = now
     const cleared = [...this.letters]
     this.letters = []
     this.wordStatus = "none"
-    return { valid: false, word, letters: cleared }
+    return { valid: false, word, letters: cleared, submittedLetters: [] }
   }
 
   clear(): ShelfLetter[] {
@@ -177,16 +185,16 @@ export class Shelf {
 
   nearestSlotIndex(screenX: number): number {
     if (this.letters.length === 0) return 0
+    const sw = this.effectiveSlotWidth
+    const sg = this.effectiveSlotGap
     const totalWidth =
-      this.letters.length * SHELF.slotWidth +
-      Math.max(0, this.letters.length - 1) * SHELF.slotGap
+      this.letters.length * sw + Math.max(0, this.letters.length - 1) * sg
     const startX = this.x + (this.shelfWidth - totalWidth) / 2
     const relX = screenX - startX
-    const idx = Math.round(relX / (SHELF.slotWidth + SHELF.slotGap))
+    const idx = Math.round(relX / (sw + sg))
     return Math.max(0, Math.min(this.letters.length, idx))
   }
 
-  /** Check if a click is on the submit button. */
   isSubmitButtonAt(screenX: number, screenY: number): boolean {
     return (
       this.letters.length > 0 &&
@@ -199,10 +207,11 @@ export class Shelf {
 
   letterIndexAt(screenX: number, screenY: number): number {
     if (!this.isOverShelf(screenX, screenY)) return -1
+    const sw = this.effectiveSlotWidth
     for (let i = 0; i < this.letters.length; i++) {
       const pos = this.slotPosition(i)
       if (
-        Math.abs(screenX - pos.x) < SHELF.slotWidth / 2 + 2 &&
+        Math.abs(screenX - pos.x) < sw / 2 + 2 &&
         Math.abs(screenY - pos.y) < this.shelfHeight / 2
       ) {
         return i
@@ -246,8 +255,14 @@ export class Shelf {
       ctx.textBaseline = "middle"
       ctx.fillText("Submit", this.btnX + this.btnW / 2, this.btnY + this.btnH / 2)
 
-      // Letters
-      const fontSize = SCALE * 0.6
+      // Letters — green if current word is already discovered
+      const isDiscovered =
+        this.discoveredWords !== null &&
+        this.letters.length >= 4 &&
+        this.discoveredWords.has(this.currentWord())
+
+      const sw = this.effectiveSlotWidth
+      const fontSize = Math.min(SCALE * 0.6, sw * 1.2)
       ctx.font = `bold ${fontSize}px ${FONT_FAMILY}`
       ctx.textAlign = "center"
       ctx.textBaseline = "middle"
@@ -255,21 +270,16 @@ export class Shelf {
       for (let i = 0; i < this.letters.length; i++) {
         const sl = this.letters[i]!
         const pos = this.slotPosition(i)
-        ctx.fillStyle = sl.isUpper ? COLORS.inkDark : COLORS.ink
+        if (isDiscovered) {
+          ctx.fillStyle = COLORS.valid
+        } else {
+          ctx.fillStyle = sl.isUpper ? COLORS.inkDark : COLORS.ink
+        }
         ctx.fillText(sl.char, pos.x, pos.y)
       }
     }
 
-    // Result flash (always renders, even when shelf is empty after submit)
-    if (this.resultMessage && performance.now() - this.resultTime < 1500) {
-      ctx.fillStyle = this.resultSuccess ? COLORS.valid : COLORS.error
-      ctx.font = `bold 16px ${FONT_FAMILY}`
-      ctx.textAlign = "center"
-      ctx.textBaseline = "alphabetic"
-      ctx.fillText(this.resultMessage, r.x + r.w / 2, r.y + r.h + 20)
-    }
-
-    // Recent submissions (always renders)
+    // Recent submissions
     if (this.submittedWords.length > 0) {
       ctx.fillStyle = COLORS.muted
       ctx.font = `14px ${FONT_FAMILY}`

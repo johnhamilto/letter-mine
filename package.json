@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "bunx vite",
+    "build": "bunx vite build",
     "build:dict": "bun run scripts/build-dictionary.ts",
     "build:glyphs": "bun run scripts/build-glyphs.ts"
   },

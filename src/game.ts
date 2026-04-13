@@ -4,6 +4,17 @@ import { MiningPrompt } from "./mining"
 import { DragController } from "./drag"
 import { Shelf } from "./shelf"
 import { LetterRenderer } from "./render"
+import { Economy } from "./economy"
+import { Hud } from "./hud"
+import { loadState, startAutoSave, type GameState } from "./state"
+import {
+  getUpgradeValue,
+  getUpgradeCost,
+  milestoneReached,
+  UNIQUE_UPGRADES,
+} from "./upgrades"
+import { Shop } from "./shop"
+import { saveState } from "./state"
 import { createDebugUI } from "./debug"
 import { MINING_WORDS } from "./data/words"
 import {
@@ -16,7 +27,14 @@ import {
   BASIN,
   FONT_FAMILY,
 } from "./constants"
-import type { GlyphData, LetterBody } from "./types"
+import type {
+  GlyphData,
+  LetterBody,
+  DictionaryEntry,
+  MilestoneName,
+  UpgradeTrack,
+  UniqueUpgrade,
+} from "./types"
 
 export class Game {
   canvas: HTMLCanvasElement
@@ -37,7 +55,21 @@ export class Game {
   drag: DragController
   shelf!: Shelf
   renderer: LetterRenderer
+  economy: Economy
+  hud: Hud
+  dictionary: Record<string, DictionaryEntry> = {}
   foregroundLetters = new Map<LetterBody, number>()
+
+  // Upgrade & progression state
+  upgradeLevels: Record<UpgradeTrack, number> = {
+    basinCapacity: 0, shelfWidth: 0, apprenticeShelfWidth: 0,
+    miningQuality: 0, autoMiner: 0, inkMultiplier: 0,
+  }
+  unlockedUniques: Set<UniqueUpgrade> = new Set()
+  highestMilestone: MilestoneName | null = null
+  shopOpen = false
+  shop: Shop
+  shopBtn: HTMLButtonElement
 
   private spawnQueue: Array<{ char: string; x: number; y: number }> = []
 
@@ -67,9 +99,39 @@ export class Game {
     // Renderer
     this.renderer = new LetterRenderer()
 
-    // Shelf (foreground UI, no physics)
-    this.shelf = new Shelf()
+    // Economy — hydrate from saved state if available
+    this.economy = new Economy()
+    const saved = loadState()
+    if (saved) {
+      this.economy.fromState(saved)
+      this.upgradeLevels = { ...saved.upgradeLevels }
+      this.unlockedUniques = new Set(saved.unlockedUniques)
+      this.highestMilestone = saved.highestMilestone
+    }
+    this.hud = new Hud(this.economy)
+    // Check milestones on load (may have earned ink before milestones existed)
+    // Suppress the flash on boot — just update the milestone level
+    const reached = milestoneReached(this.economy.totalInkEarned)
+    if (reached) this.highestMilestone = reached
+
+    // Shelf — width from upgrade level
+    const shelfSlots = getUpgradeValue("shelfWidth", this.upgradeLevels.shelfWidth)
+    this.shelf = new Shelf(shelfSlots)
     this.shelf.onSubmit = () => this.submitShelf()
+    if (saved) {
+      this.shelf.submittedWords = saved.submittedWords
+    }
+
+    // Shop
+    this.shop = new Shop({
+      getInk: () => this.economy.ink,
+      getUpgradeLevel: (track) => this.upgradeLevels[track],
+      hasUnique: (id) => this.unlockedUniques.has(id),
+      getMilestone: () => this.highestMilestone,
+      onBuyTiered: (track) => this.buyTieredUpgrade(track),
+      onBuyUnique: (id) => this.buyUniqueUpgrade(id),
+      onClose: () => this.closeShop(),
+    })
 
     this.resize()
     window.addEventListener("resize", () => this.resize())
@@ -100,6 +162,7 @@ export class Game {
       words: MINING_WORDS,
       onLetterMined: (char, screenX, screenY) => {
         this.spawnLetter(char, screenX, screenY)
+        this.economy.creditLetterMined()
       },
     })
 
@@ -133,8 +196,17 @@ export class Game {
       },
     )
 
-    // Keyboard: submit / clear shelf
+    // Keyboard
     window.addEventListener("keydown", (e) => {
+      // Shop toggle
+      if (e.key === "Escape" && this.shopOpen) {
+        this.closeShop()
+        return
+      }
+
+      // Block game input when shop is open
+      if (this.shopOpen) return
+
       if (e.key === "Enter") {
         this.submitShelf()
       } else if (e.key === "Escape") {
@@ -142,7 +214,18 @@ export class Game {
       }
     })
 
+    // DOM shop button
+    this.shopBtn = document.createElement("button")
+    this.shopBtn.className = "shop-btn"
+    this.shopBtn.textContent = "Shop"
+    this.shopBtn.addEventListener("click", () => this.openShop())
+    if (this.highestMilestone) this.shopBtn.style.display = "block"
+    document.body.appendChild(this.shopBtn)
+
     this.loadDictionary()
+
+    // Auto-save every 30s + on page unload
+    startAutoSave(() => this.buildSaveState())
   }
 
   resize() {
@@ -227,12 +310,81 @@ export class Game {
   async loadDictionary() {
     try {
       const resp = await fetch("/dictionary.json")
-      const data = (await resp.json()) as Record<string, unknown>
+      const data = (await resp.json()) as Record<string, DictionaryEntry>
+      this.dictionary = data
       const words = new Set(Object.keys(data))
       this.shelf.loadDictionary(words)
+      this.shelf.discoveredWords = this.economy.discoveredWords
       console.log(`Dictionary loaded: ${words.size} words`)
     } catch {
       console.warn("Dictionary not found — shelf validation disabled")
+    }
+  }
+
+  // ── Progression ──
+
+  buildSaveState(): GameState {
+    return {
+      ...this.economy.toPartialState(this.shelf.submittedWords),
+      upgradeLevels: { ...this.upgradeLevels },
+      unlockedUniques: [...this.unlockedUniques],
+      highestMilestone: this.highestMilestone,
+    }
+  }
+
+  checkMilestones() {
+    const reached = milestoneReached(this.economy.totalInkEarned)
+    if (reached && reached !== this.highestMilestone) {
+      this.highestMilestone = reached
+      this.hud.showMilestone(reached)
+      this.shopBtn.style.display = "block"
+    }
+  }
+
+  openShop() {
+    this.shopOpen = true
+    this.mining.paused = true
+    this.shop.show()
+  }
+
+  closeShop() {
+    this.shopOpen = false
+    this.mining.paused = false
+    this.shop.hide()
+  }
+
+  getBasinCapacity(): number {
+    return getUpgradeValue("basinCapacity", this.upgradeLevels.basinCapacity)
+  }
+
+  buyTieredUpgrade(track: UpgradeTrack) {
+    const level = this.upgradeLevels[track]
+    const cost = getUpgradeCost(track, level)
+    if (cost === null) return
+    if (!this.economy.spendInk(cost)) return
+    this.upgradeLevels[track] = level + 1
+    this.applyUpgrade(track)
+    saveState(this.buildSaveState())
+  }
+
+  buyUniqueUpgrade(id: UniqueUpgrade) {
+    if (this.unlockedUniques.has(id)) return
+    const def = UNIQUE_UPGRADES.find((u) => u.id === id)
+    if (!def) return
+    if (!this.economy.spendInk(def.cost)) return
+    this.unlockedUniques.add(id)
+    saveState(this.buildSaveState())
+  }
+
+  applyUpgrade(track: UpgradeTrack) {
+    const value = getUpgradeValue(track, this.upgradeLevels[track])
+    switch (track) {
+      case "basinCapacity":
+        // Overflow uses getBasinCapacity() — auto-updates
+        break
+      case "shelfWidth":
+        this.shelf.maxSlots = value
+        break
     }
   }
 
@@ -240,8 +392,20 @@ export class Game {
     if (this.shelf.letters.length === 0) return
     const result = this.shelf.submit()
     if (result.valid) {
-      console.log("Submitted:", result.word)
+      const normalized = result.word.toLowerCase()
+      const entry = this.dictionary[normalized]
+      const score = this.economy.scoreWord(
+        result.word,
+        result.submittedLetters,
+        entry,
+      )
+      console.log(
+        `Submitted: ${result.word} → +${score.finalInk} Ink`,
+        score.bonuses.map((b) => b.label).join(", "),
+      )
+      this.checkMilestones()
     } else {
+      this.economy.resetStreak()
       this.dumpShelfLetters(result.letters)
     }
   }
@@ -297,7 +461,7 @@ export class Game {
 
   updateOverflow(dt: number) {
     const count = this.letters.length
-    const max = BASIN.maxLetters
+    const max = this.getBasinCapacity()
 
     if (this.isDraining) {
       // Wait until all letters are gone, then restore
@@ -341,9 +505,65 @@ export class Game {
     }
   }
 
+  renderOverflowVignette(ctx: CanvasRenderingContext2D) {
+    const count = this.letters.length
+    const max = this.getBasinCapacity()
+    const warnAt = Math.floor(max * BASIN.warnRatio)
+
+    if (count < warnAt && !this.isDraining) return
+
+    // Intensity ramps from 0 at warnAt to 1 at max, stays 1 past max
+    let intensity = Math.min(1, (count - warnAt) / (max - warnAt))
+
+    // Pulsate when countdown is active
+    if (this.overflowCountdown > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 150)
+      intensity = Math.max(intensity, 0.6 + 0.4 * pulse)
+    } else if (this.isDraining) {
+      intensity = 1
+    }
+
+    if (intensity <= 0) return
+
+    const alpha = intensity * 0.35
+    const spread = 60 + intensity * 80
+
+    ctx.save()
+
+    // Top edge
+    const topGrad = ctx.createLinearGradient(0, 0, 0, spread)
+    topGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
+    topGrad.addColorStop(1, "rgba(192, 57, 43, 0)")
+    ctx.fillStyle = topGrad
+    ctx.fillRect(0, 0, this.width, spread)
+
+    // Bottom edge
+    const botGrad = ctx.createLinearGradient(0, this.height, 0, this.height - spread)
+    botGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
+    botGrad.addColorStop(1, "rgba(192, 57, 43, 0)")
+    ctx.fillStyle = botGrad
+    ctx.fillRect(0, this.height - spread, this.width, spread)
+
+    // Left edge
+    const leftGrad = ctx.createLinearGradient(0, 0, spread, 0)
+    leftGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
+    leftGrad.addColorStop(1, "rgba(192, 57, 43, 0)")
+    ctx.fillStyle = leftGrad
+    ctx.fillRect(0, 0, spread, this.height)
+
+    // Right edge
+    const rightGrad = ctx.createLinearGradient(this.width, 0, this.width - spread, 0)
+    rightGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
+    rightGrad.addColorStop(1, "rgba(192, 57, 43, 0)")
+    ctx.fillStyle = rightGrad
+    ctx.fillRect(this.width - spread, 0, spread, this.height)
+
+    ctx.restore()
+  }
+
   renderOverflowHUD(ctx: CanvasRenderingContext2D) {
     const count = this.letters.length
-    const max = BASIN.maxLetters
+    const max = this.getBasinCapacity()
     const warnAt = Math.floor(max * BASIN.warnRatio)
 
     if (count < warnAt && !this.isDraining) return
@@ -353,7 +573,8 @@ export class Game {
     const boxWidth = 240
     const boxHeight = hasMessage ? 64 : 36
     const bx = (this.width - boxWidth) / 2
-    const by = this.height - boxHeight - 20
+    const shelfTop = this.shelf.rect.y
+    const by = shelfTop - boxHeight - 12
 
     // Container
     ctx.fillStyle = COLORS.bg
@@ -452,8 +673,12 @@ export class Game {
 
     this.mining.render(ctx, this.width)
 
+    // Overflow vignette (behind letters, on top of background)
+    this.renderOverflowVignette(ctx)
+
     const dpr = window.devicePixelRatio
     const dragging = this.drag.getDragging()
+    const hovered = this.drag.getHovered()
     const now = performance.now()
 
     // Expire foreground status
@@ -465,7 +690,7 @@ export class Game {
     for (const letter of this.letters) {
       if (letter === dragging) continue
       if (this.foregroundLetters.has(letter)) continue
-      this.renderer.renderLetter(ctx, letter, dpr)
+      this.renderer.renderLetter(ctx, letter, dpr, letter === hovered)
     }
 
     // Shelf (foreground)
@@ -478,7 +703,7 @@ export class Game {
         this.foregroundLetters.delete(letter)
         continue
       }
-      this.renderer.renderLetter(ctx, letter, dpr)
+      this.renderer.renderLetter(ctx, letter, dpr, letter === hovered)
     }
 
     // Dragged letter (topmost)
@@ -488,5 +713,9 @@ export class Game {
 
     // Overflow HUD (on top of everything)
     this.renderOverflowHUD(ctx)
+
+    // Economy HUD (topmost layer)
+    this.hud.render(ctx, this.width, this.height)
+
   }
 }

@@ -23,6 +23,7 @@ export class DragController {
   private onLetterReleased: (letter: LetterBody) => void
 
   private dragging: LetterBody | null = null
+  private hovered: LetterBody | null = null
   private localAnchor = { x: 0, y: 0 }
   private mouseTarget = { x: 0, y: 0 }
   private mouseStart = { x: 0, y: 0 }
@@ -125,6 +126,7 @@ export class DragController {
 
     if (letter) {
       this.dragging = letter
+      this.hovered = null
       this.didDrag = false
       this.mouseTarget.x = pos.x
       this.mouseTarget.y = pos.y
@@ -155,9 +157,11 @@ export class DragController {
 
     if (!this.dragging) {
       if (this.shelf.letterIndexAt(screenX, screenY) >= 0) {
+        this.hovered = null
         this.canvas.style.cursor = "grab"
       } else {
         const letter = this.findLetterAt(pos.x, pos.y)
+        this.hovered = letter
         this.canvas.style.cursor = letter ? "grab" : "default"
       }
       return
@@ -210,6 +214,10 @@ export class DragController {
 
   getDragging(): LetterBody | null {
     return this.dragging
+  }
+
+  getHovered(): LetterBody | null {
+    return this.dragging ? null : this.hovered
   }
 
   applySpringForce() {

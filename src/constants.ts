@@ -79,3 +79,21 @@ export const SHELF = {
   cornerRadius: 6,
   maxSlots: 12,
 } as const
+
+// ── Starting values (before upgrades) ──
+export const STARTING = {
+  basinCapacity: 50,
+  shelfSlots: 4,
+} as const
+
+// ── Scoring ──
+export const SCORING = {
+  tierMultipliers: [15, 6, 3, 1.5, 1] as const, // indexed by tier 0-4
+  firstInFamilyBonus: 2,
+  uppercaseOpenerBonus: 1.5,
+  streakBonusPerStep: 0.1,
+  streakBonusCap: 0.5,
+  repeatWordPenalty: 0.1,
+  letterMinedInk: 0.1,
+  scoreFlashMs: 2000,
+} as const

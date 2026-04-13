@@ -44,6 +44,7 @@ export class LetterRenderer {
     ctx: CanvasRenderingContext2D,
     letter: LetterBody,
     dpr: number,
+    highlighted = false,
   ) {
     const pos = letter.body.translation()
     const rot = letter.body.rotation()
@@ -59,6 +60,12 @@ export class LetterRenderer {
       const fontSize = SCALE * scale
       const s = fontSize / 100
       const pad = 4
+
+      if (highlighted) {
+        ctx.shadowColor = COLORS.shelf
+        ctx.shadowBlur = 16
+      }
+
       ctx.drawImage(
         oc,
         -(glyph.width / 2) * s - pad,
@@ -66,6 +73,11 @@ export class LetterRenderer {
         oc.width / dpr,
         oc.height / dpr,
       )
+
+      if (highlighted) {
+        ctx.shadowColor = "transparent"
+        ctx.shadowBlur = 0
+      }
     }
 
     if (this.showColliders) {
