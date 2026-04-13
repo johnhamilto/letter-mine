@@ -39,6 +39,7 @@ export class Game {
   // Basin overflow state
   overflowCountdown = 0
   isDraining = false
+  private drainTimer = 0
   mining: MiningPrompt
   drag!: DragController
   shelf!: Shelf
@@ -244,6 +245,8 @@ export class Game {
       this.spawnLetter(char, x, y)
       this.economy.creditLetterMined()
     })
+
+    this.autoMiner.shouldPause = () => this.getLetterCount() >= this.getBasinCapacity() * 0.9
 
     // Apply all upgrade side effects
     this.applyAllUpgrades()
@@ -661,14 +664,20 @@ export class Game {
 
   // -- Basin overflow --
 
+  getLetterCount(): number {
+    return this.letters.length + this.shelf.letters.length
+  }
+
   updateOverflow(dt: number) {
-    const count = this.letters.length
+    const count = this.getLetterCount()
     const max = this.getBasinCapacity()
 
     if (this.isDraining) {
-      if (count === 0) {
+      this.drainTimer -= dt
+      if (this.drainTimer <= 0) {
         this.isDraining = false
         this.overflowCountdown = 0
+        this.drainTimer = 0
         this.restoreFloor()
       }
       return
@@ -682,6 +691,7 @@ export class Game {
       if (this.overflowCountdown <= 0) {
         this.isDraining = true
         this.overflowCountdown = 0
+        this.drainTimer = BASIN.drainSec
         this.removeFloor()
         this.dumpShelfLetters()
       }
@@ -705,7 +715,7 @@ export class Game {
   }
 
   renderOverflowVignette() {
-    const count = this.letters.length
+    const count = this.getLetterCount()
     const max = this.getBasinCapacity()
     const warnAt = Math.floor(max * BASIN.warnRatio)
 
@@ -790,7 +800,7 @@ export class Game {
   }
 
   renderOverflowHUD() {
-    const count = this.letters.length
+    const count = this.getLetterCount()
     const max = this.getBasinCapacity()
     const warnAt = Math.floor(max * BASIN.warnRatio)
 
@@ -945,13 +955,14 @@ export class Game {
         ? this.shelf.getCompletionChars()
         : null
 
-    const vowelBloom = this.unlockedUniques.has('vowelBloom')
+    const hasGhost = this.unlockedUniques.has('wordGhost')
+    const vowelBloom = this.unlockedUniques.has('vowelBloom') && !hasGhost
     const vowels = 'aeiouAEIOU'
     const getGlow = (letter: LetterBody): string | null => {
       const lc = letter.char.toLowerCase()
       if (compassChars?.has(lc)) return '#4A7C59'
-      if (ghostChars?.has(lc)) return '#6B4423'
-      if (vowelBloom && vowels.includes(letter.char)) return '#8B7355'
+      if (ghostChars?.has(lc)) return '#2E8B7D'
+      if (vowelBloom && vowels.includes(letter.char)) return '#B8860B'
       return null
     }
 

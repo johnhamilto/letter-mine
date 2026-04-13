@@ -27,7 +27,7 @@ function createLetterBody(id: number, char: string, x: number, y: number): boole
   const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
     .setTranslation(x, y)
     .setAngularDamping(2.0)
-    .setLinearDamping(0.3)
+    .setLinearDamping(1.5)
     .setCcdEnabled(true)
 
   const body = world.createRigidBody(bodyDesc)
@@ -83,9 +83,12 @@ function buildWalls(w: number, h: number, isDraining: boolean) {
   wallBodies = []
   floorBody = null
 
+  const wallCollider = (normal: RAPIER.Vector2) =>
+    RAPIER.ColliderDesc.halfspace(normal).setRestitution(0.0).setFriction(0.8)
+
   if (!isDraining) {
     const floor = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, h))
-    world.createCollider(RAPIER.ColliderDesc.halfspace(new RAPIER.Vector2(0, -1)), floor)
+    world.createCollider(wallCollider(new RAPIER.Vector2(0, -1)), floor)
     wallBodies.push(floor)
     floorBody = floor
   }
@@ -98,7 +101,7 @@ function buildWalls(w: number, h: number, isDraining: boolean) {
 
   for (const wall of sides) {
     const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(wall.x, wall.y))
-    world.createCollider(RAPIER.ColliderDesc.halfspace(new RAPIER.Vector2(wall.nx, wall.ny)), body)
+    world.createCollider(wallCollider(new RAPIER.Vector2(wall.nx, wall.ny)), body)
     wallBodies.push(body)
   }
 }
@@ -114,7 +117,10 @@ function removeFloor() {
 function restoreFloor(h: number) {
   if (!world || floorBody) return
   const floor = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, h))
-  world.createCollider(RAPIER.ColliderDesc.halfspace(new RAPIER.Vector2(0, -1)), floor)
+  world.createCollider(
+    RAPIER.ColliderDesc.halfspace(new RAPIER.Vector2(0, -1)).setRestitution(0.0).setFriction(0.8),
+    floor,
+  )
   wallBodies.push(floor)
   floorBody = floor
 }

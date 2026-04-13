@@ -61,7 +61,7 @@ export class LetterRenderer {
 
     const fontSize = SCALE * scale
     const s = fontSize / 100
-    const blur = 18
+    const blur = 24
     const pad = blur + 4
 
     const logicalW = Math.ceil(glyph.width * s) + pad * 2
@@ -77,7 +77,7 @@ export class LetterRenderer {
     octx.shadowOffsetX = 0
     octx.shadowOffsetY = 0
     octx.fillStyle = color
-    octx.globalAlpha = 0.7
+    octx.globalAlpha = 0.85
     octx.font = `bold ${fontSize}px ${FONT_FAMILY}`
     octx.textBaseline = 'alphabetic'
     octx.textAlign = 'left'

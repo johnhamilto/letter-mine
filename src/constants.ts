@@ -47,6 +47,7 @@ export const BASIN = {
   maxLetters: 500,
   warnRatio: 0.8, // start warning at 80%
   countdownSec: 5,
+  drainSec: 2, // floor removed for this long, then restored
   killPlaneOffset: 300, // px below screen to despawn
 } as const
 

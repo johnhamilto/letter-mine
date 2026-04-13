@@ -1,7 +1,5 @@
 /** Auto-Miner — spawns frequency-weighted random letters when the player is idle. */
 
-const IDLE_THRESHOLD_MS = 2000
-
 /** Approximate English letter frequencies (%). */
 const LETTER_FREQ: ReadonlyArray<[string, number]> = [
   ['e', 12.7],
@@ -51,24 +49,21 @@ function pickLetter(): string {
 
 export class AutoMiner {
   private onSpawn: (char: string) => void
-  private lastPlayerInput = performance.now()
   private accumulator = 0
 
   /** Characters per second. 0 = disabled. */
   rate = 0
 
+  /** Return true to suppress spawning (e.g. basin near capacity). */
+  shouldPause: () => boolean = () => false
+
   constructor(onSpawn: (char: string) => void) {
     this.onSpawn = onSpawn
-    window.addEventListener('keydown', () => {
-      this.lastPlayerInput = performance.now()
-    })
   }
 
   update(dt: number) {
     if (this.rate <= 0) return
-
-    const now = performance.now()
-    if (now - this.lastPlayerInput < IDLE_THRESHOLD_MS) {
+    if (this.shouldPause()) {
       this.accumulator = 0
       return
     }

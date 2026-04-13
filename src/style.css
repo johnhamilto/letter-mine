@@ -92,22 +92,34 @@ html, body {
 
 /* ── Shop button ── */
 
+/* ── HUD elements (DOM) ── */
+
+.hud-ink {
+  position: fixed;
+  top: 14px;
+  left: 20px;
+  font-family: 'Playfair Display', serif;
+  font-size: 18px;
+  font-weight: bold;
+  color: #2C2416;
+  z-index: 5;
+  user-select: none;
+}
+
 .shop-btn {
   position: fixed;
   top: 14px;
   right: 16px;
   font-family: 'Playfair Display', serif;
   font-size: 13px;
-  font-weight: bold;
-  letter-spacing: 0.5px;
-  padding: 5px 14px;
-  border: 1.5px solid #8B7355;
-  border-radius: 3px;
-  background: #EDE6D6;
-  color: #2C2416;
+  color: #9E8E76;
+  background: none;
+  border: none;
+  padding: 0;
   cursor: pointer;
   z-index: 21;
-  transition: background 0.15s, color 0.15s, right 0.25s ease;
+  transition: color 0.15s, right 0.25s ease;
+  user-select: none;
 }
 
 .shop-btn.shop-open {
@@ -115,20 +127,19 @@ html, body {
 }
 
 .shop-btn:hover {
-  background: #2C2416;
-  color: #EDE6D6;
+  color: #2C2416;
+  text-decoration: underline;
 }
 
 .shop-btn.has-available::after {
   content: '';
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  width: 8px;
-  height: 8px;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 6px;
+  width: 7px;
+  height: 7px;
   background: #6B4423;
   border-radius: 50%;
-  border: 1.5px solid #EDE6D6;
 }
 
 /* ── Shop drawer ── */
@@ -331,10 +342,12 @@ html, body {
   cursor: pointer;
   z-index: 5;
   transition: color 0.15s;
+  user-select: none;
 }
 
 .dict-btn:hover {
   color: #2C2416;
+  text-decoration: underline;
 }
 
 /* ── Dictionary overlay ── */

@@ -24,9 +24,10 @@ export class Hud {
   private barTooltip: HTMLDivElement
   private dictButton: HTMLButtonElement
 
-  // PixiJS text objects
-  private inkText: Text
-  private discoveredText: Text
+  // DOM HUD elements
+  private inkEl: HTMLDivElement
+
+  // PixiJS text objects (animated effects only)
   private scoreFlashText: Text
   private scoreBonusText: Text
   private milestoneContainer: Container
@@ -64,30 +65,11 @@ export class Hud {
     })
     document.body.appendChild(this.dictButton)
 
-    // Ink counter
-    this.inkText = new Text({
-      text: '0 Ink',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 22,
-        fontWeight: 'bold',
-        fill: COLORS.ink,
-      },
-    })
-    this.inkText.position.set(20, 14)
-    this.container.addChild(this.inkText)
-
-    // Discovered count
-    this.discoveredText = new Text({
-      text: '0 discovered',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 16,
-        fill: COLORS.muted,
-      },
-    })
-    this.discoveredText.position.set(20, 42)
-    this.container.addChild(this.discoveredText)
+    // Ink counter (DOM)
+    this.inkEl = document.createElement('div')
+    this.inkEl.className = 'hud-ink'
+    this.inkEl.textContent = '0 Ink'
+    document.body.appendChild(this.inkEl)
 
     // Score flash
     this.scoreFlashText = new Text({
@@ -167,15 +149,12 @@ export class Hud {
 
   private renderInkCounter() {
     const ink = Math.floor(this.economy.ink)
-    this.inkText.text = `${ink} Ink`
+    this.inkEl.textContent = `${ink} Ink`
   }
 
   private renderDiscoveredCount() {
     const count = this.economy.discoveredWords.size
-    const label = `${count} discovered`
-    this.discoveredText.text = label
-    this.discoveredText.visible = false
-    this.dictButton.textContent = label
+    this.dictButton.textContent = `${count} discovered`
   }
 
   private updateMilestoneBar() {
