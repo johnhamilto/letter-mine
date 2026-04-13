@@ -279,6 +279,19 @@ export class Shelf {
       }
     }
 
+    // Letter count hint (when building but below minimum)
+    if (this.letters.length > 0 && this.letters.length < 4) {
+      ctx.fillStyle = COLORS.faded
+      ctx.font = `13px ${FONT_FAMILY}`
+      ctx.textAlign = "center"
+      ctx.textBaseline = "alphabetic"
+      ctx.fillText(
+        `${this.letters.length} / 4 min`,
+        r.x + r.w / 2,
+        r.y + r.h + 18,
+      )
+    }
+
     // Recent submissions
     if (this.submittedWords.length > 0) {
       ctx.fillStyle = COLORS.muted

@@ -1,5 +1,7 @@
 # Letter Mine — Gameplay Design
 
+> **Purpose of this file:** Game design: economy, scoring, upgrades, milestones, pacing, idle loop. The authoritative source for all gameplay numbers. Not architecture (see CLAUDE.md) or feedback (see FEEDBACK.md).
+
 Target: 2-3 hours active play to completion. Idle at ~20% efficiency.
 
 ## Core Loop

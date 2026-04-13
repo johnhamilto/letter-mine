@@ -1,5 +1,7 @@
 # Letter Mine
 
+> **Purpose of this file:** Architecture, algorithms, constants, data pipelines, and gotchas. Everything you need to understand the code. Not gameplay design (see GAMEPLAY.md) or feedback (see FEEDBACK.md).
+
 An incremental word game where you type to mine letters, collect them with physics, and build words.
 
 ## Quick Start
@@ -133,6 +135,33 @@ Word families via Hunspell affix expansion: `root` field maps inflected forms to
 - **Font**: Playfair Display for everything
 - **Palette**: parchment `#F5F0E8`, walnut ink `#2C2416`, dark ink `#1A1008`, worn wood `#8B7355`, burnt sienna `#6B4423`, faded `#C4B69C`, muted `#9E8E76`
 - **Letters ARE the physics bodies** — glyph outlines define collision shapes, not tiles/blocks
+
+## Worktree Workflow
+
+Use `wt` (git worktree manager) for parallel feature development. Each feature gets its own worktree under `.wt/`, sharing the same git repo but with an independent working directory and branch.
+
+```bash
+wt init                    # First-time setup: scaffolds .wt/, .worktree-sync, .worktree-setup
+wt add feat-drag-rework    # Create worktree on new branch from main → .wt/feat-drag-rework/
+wt add feat-new-hud dev    # Create worktree branching from 'dev' instead of main
+wt ls                      # List all worktrees with status
+wt cd feat-drag-rework     # cd into a worktree
+wt cd                      # cd back to repo root
+wt rm feat-drag-rework     # Remove worktree (refuses if uncommitted changes)
+wt prune                   # Remove worktrees whose branches are merged/gone
+wt prune --force           # Remove all clean worktrees (skip only uncommitted)
+```
+
+**Configuration files** (repo root):
+- `.worktree-sync` — files copied into each new worktree (e.g. `.env`, `.env.local`)
+- `.worktree-setup` — shell script that runs after worktree creation (e.g. `bun install`)
+
+**Rules for worktree development:**
+- One feature per worktree. Branch name = worktree directory name.
+- Run `bun install` in each new worktree (add it to `.worktree-setup` to automate).
+- Dev servers in different worktrees need different ports — pass `--port` to avoid collisions.
+- Never work directly on `main` in a worktree. Main branch stays in the repo root.
+- `.wt/` is gitignored — worktrees are local-only, not committed.
 
 ## Gotchas
 

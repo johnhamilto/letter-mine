@@ -109,6 +109,7 @@ export class Game {
       this.highestMilestone = saved.highestMilestone
     }
     this.hud = new Hud(this.economy)
+    this.hud.getMilestone = () => this.highestMilestone
     // Check milestones on load (may have earned ink before milestones existed)
     // Suppress the flash on boot — just update the milestone level
     const reached = milestoneReached(this.economy.totalInkEarned)
@@ -219,7 +220,7 @@ export class Game {
     this.shopBtn.className = "shop-btn"
     this.shopBtn.textContent = "Shop"
     this.shopBtn.addEventListener("click", () => this.openShop())
-    if (this.highestMilestone) this.shopBtn.style.display = "block"
+    if (this.shelf.submittedWords.length > 0) this.shopBtn.style.display = "block"
     document.body.appendChild(this.shopBtn)
 
     this.loadDictionary()
@@ -404,6 +405,7 @@ export class Game {
         score.bonuses.map((b) => b.label).join(", "),
       )
       this.checkMilestones()
+      this.shopBtn.style.display = "block"
     } else {
       this.economy.resetStreak()
       this.dumpShelfLetters(result.letters)
