@@ -1,5 +1,4 @@
-import type RAPIER_NS from '@dimforge/rapier2d-compat'
-import { createLetterBody } from './physics'
+import { PhysicsProxy } from './physics'
 import { MiningPrompt } from './mining'
 import { DragController } from './drag'
 import { Shelf } from './shelf'
@@ -17,7 +16,6 @@ import { MINING_WORDS } from './data/words'
 import {
   SCALE,
   COLORS,
-  PHYSICS,
   FIXED_DT,
   MAX_SUBSTEPS,
   FOREGROUND_MS,
@@ -31,25 +29,24 @@ import type {
   MilestoneName,
   UpgradeTrack,
   UniqueUpgrade,
+  BodyState,
 } from './types'
 
 export class Game {
   canvas: HTMLCanvasElement
   ctx: CanvasRenderingContext2D
-  RAPIER: typeof RAPIER_NS
+  physics: PhysicsProxy
   glyphs: Record<string, GlyphData>
-  world: RAPIER_NS.World
   letters: LetterBody[] = []
+  private letterMap = new Map<number, LetterBody>()
   width = 0
   height = 0
-  wallBodies: RAPIER_NS.RigidBody[] = []
-  floorBody: RAPIER_NS.RigidBody | null = null
 
   // Basin overflow state
-  overflowCountdown = 0 // seconds remaining, 0 = not overflowing
-  isDraining = false // floor removed, letters falling out
+  overflowCountdown = 0
+  isDraining = false
   mining: MiningPrompt
-  drag: DragController
+  drag!: DragController
   shelf!: Shelf
   renderer: LetterRenderer
   economy: Economy
@@ -76,38 +73,23 @@ export class Game {
   siphonMode = false
   apprenticeShelf: ApprenticeShelf | null = null
 
-  /** Dictionary words bucketed by tier for mining quality upgrades. */
   private wordsByTier: Map<number, string[]> = new Map()
 
   private spawnQueue: Array<{ char: string; x: number; y: number }> = []
 
-  constructor(
-    canvas: HTMLCanvasElement,
-    RAPIER: typeof RAPIER_NS,
-    glyphs: Record<string, GlyphData>,
-  ) {
+  constructor(canvas: HTMLCanvasElement, physics: PhysicsProxy, glyphs: Record<string, GlyphData>) {
     this.canvas = canvas
-    this.RAPIER = RAPIER
+    this.physics = physics
     this.glyphs = glyphs
 
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('No 2d context')
     this.ctx = ctx
 
-    // Physics world
-    this.world = new RAPIER.World(new RAPIER.Vector2(0, PHYSICS.gravity))
-    const ip = this.world.integrationParameters
-    ip.numSolverIterations = PHYSICS.solverIterations
-    ip.numInternalPgsIterations = PHYSICS.pgsIterations
-    ip.contact_natural_frequency = PHYSICS.contactFrequency
-    ip.normalizedPredictionDistance = PHYSICS.predictionDistance
-    ip.normalizedAllowedLinearError = PHYSICS.allowedLinearError
-    ip.maxCcdSubsteps = PHYSICS.maxCcdSubsteps
-
     // Renderer
     this.renderer = new LetterRenderer()
 
-    // Economy — hydrate from saved state if available
+    // Economy
     this.economy = new Economy()
     const saved = loadState()
     if (saved) {
@@ -118,8 +100,6 @@ export class Game {
     }
     this.hud = new Hud(this.economy)
     this.hud.getMilestone = () => this.highestMilestone
-    // Check milestones on load (may have earned ink before milestones existed)
-    // Suppress the flash on boot — just update the milestone level
     const reached = milestoneReached(this.economy.totalInkEarned)
     if (reached) this.highestMilestone = reached
 
@@ -144,7 +124,7 @@ export class Game {
     this.resize()
     window.addEventListener('resize', () => this.resize())
 
-    // Dev panel (only in development)
+    // Dev panel
     if (import.meta.env.DEV) {
       createDevPanel({
         onToggleGlyphs: () => {
@@ -172,7 +152,6 @@ export class Game {
         onDiscoverWords: (count) => {
           const allWords = Object.keys(this.dictionary)
           const undiscovered = allWords.filter((w) => !this.economy.discoveredWords.has(w))
-          // Shuffle and pick N
           for (let i = undiscovered.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1))
             ;[undiscovered[i], undiscovered[j]] = [undiscovered[j]!, undiscovered[i]!]
@@ -219,32 +198,27 @@ export class Game {
     // Auto-miner
     this.autoMiner = new AutoMiner(this.mining)
 
-    // Apply all upgrade side effects now that all systems are initialized
+    // Apply all upgrade side effects
     this.applyAllUpgrades()
 
     // Drag controller
     this.drag = new DragController(
       canvas,
-      RAPIER,
-      this.world,
+      this.physics,
       this.letters,
       this.shelf,
       (letter) => {
         const idx = this.letters.indexOf(letter)
         if (idx >= 0) this.letters.splice(idx, 1)
+        this.letterMap.delete(letter.id)
         this.foregroundLetters.delete(letter)
       },
       (char, screenX, screenY) => {
         const glyph = this.glyphs[char]
         if (!glyph) return null
-        const letter = createLetterBody(
-          this.RAPIER,
-          this.world,
-          glyph,
-          screenX / SCALE,
-          screenY / SCALE,
-        )
-        if (letter) this.letters.push(letter)
+        const letter = this.physics.spawn(glyph, screenX, screenY)
+        this.letters.push(letter)
+        this.letterMap.set(letter.id, letter)
         return letter
       },
       (letter) => {
@@ -254,16 +228,13 @@ export class Game {
 
     // Keyboard
     window.addEventListener('keydown', (e) => {
-      // Shop toggle
       if (e.key === 'Escape' && this.shopOpen) {
         this.closeShop()
         return
       }
 
-      // Block game input when shop is open
       if (this.shopOpen) return
 
-      // Siphon: Tab toggles focus mode
       if (e.key === 'Tab' && this.unlockedUniques.has('siphon')) {
         e.preventDefault()
         this.siphonMode = !this.siphonMode
@@ -271,7 +242,6 @@ export class Game {
         return
       }
 
-      // Siphon mode: typing pulls letters from basin to shelf
       if (this.siphonMode && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
         this.siphonLetter(e.key)
@@ -298,7 +268,6 @@ export class Game {
 
     this.loadDictionary()
 
-    // Auto-save every 30s + on page unload
     startAutoSave(() => this.buildSaveState())
   }
 
@@ -310,62 +279,16 @@ export class Game {
     this.canvas.height = this.height * dpr
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-    this.buildWalls()
+    this.physics.rebuildWalls(this.width, this.height, this.isDraining)
     this.shelf.rebuild(this.width, this.height)
   }
 
-  buildWalls() {
-    const R = this.RAPIER
-    for (const body of this.wallBodies) {
-      this.world.removeRigidBody(body)
-    }
-    this.wallBodies = []
-    this.floorBody = null
-
-    const w = this.width / SCALE
-    const h = this.height / SCALE
-
-    // Floor (tracked separately for drain mechanic)
-    if (!this.isDraining) {
-      const floor = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0, h))
-      this.world.createCollider(R.ColliderDesc.halfspace(new R.Vector2(0, -1)), floor)
-      this.wallBodies.push(floor)
-      this.floorBody = floor
-    }
-
-    // Ceiling, left, right
-    const sides: Array<{ x: number; y: number; nx: number; ny: number }> = [
-      { x: 0, y: 0, nx: 0, ny: 1 },
-      { x: 0, y: 0, nx: 1, ny: 0 },
-      { x: w, y: 0, nx: -1, ny: 0 },
-    ]
-
-    for (const wall of sides) {
-      const body = this.world.createRigidBody(
-        R.RigidBodyDesc.fixed().setTranslation(wall.x, wall.y),
-      )
-      this.world.createCollider(R.ColliderDesc.halfspace(new R.Vector2(wall.nx, wall.ny)), body)
-      this.wallBodies.push(body)
-    }
-  }
-
   removeFloor() {
-    if (this.floorBody) {
-      this.world.removeRigidBody(this.floorBody)
-      const idx = this.wallBodies.indexOf(this.floorBody)
-      if (idx >= 0) this.wallBodies.splice(idx, 1)
-      this.floorBody = null
-    }
+    this.physics.removeFloor()
   }
 
   restoreFloor() {
-    if (this.floorBody) return
-    const R = this.RAPIER
-    const h = this.height / SCALE
-    const floor = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0, h))
-    this.world.createCollider(R.ColliderDesc.halfspace(new R.Vector2(0, -1)), floor)
-    this.wallBodies.push(floor)
-    this.floorBody = floor
+    this.physics.restoreFloor(this.height)
   }
 
   async loadDictionary() {
@@ -377,7 +300,6 @@ export class Game {
       this.shelf.loadDictionary(words)
       this.shelf.discoveredWords = this.economy.discoveredWords
 
-      // Bucket words by tier for mining quality (only short common-ish words)
       for (const [word, entry] of Object.entries(data)) {
         if (word.length < 2 || word.length > 8) continue
         const tier = entry.tier
@@ -389,7 +311,6 @@ export class Game {
         bucket.push(word)
       }
 
-      // Apply mining quality now that word tiers are loaded
       this.updateMiningWords()
 
       console.log(`Dictionary loaded: ${words.size} words`)
@@ -464,9 +385,10 @@ export class Game {
           this.apprenticeShelf = new ApprenticeShelf({
             getLetters: () => this.letters,
             removeLetter: (letter) => {
-              this.world.removeRigidBody(letter.body)
+              this.physics.remove(letter.id)
               const idx = this.letters.indexOf(letter)
               if (idx >= 0) this.letters.splice(idx, 1)
+              this.letterMap.delete(letter.id)
               this.foregroundLetters.delete(letter)
             },
             getDiscoveredWords: () => this.economy.discoveredWords,
@@ -495,7 +417,6 @@ export class Game {
     const value = getUpgradeValue(track, this.upgradeLevels[track])
     switch (track) {
       case 'basinCapacity':
-        // Overflow uses getBasinCapacity() — auto-updates
         break
       case 'shelfWidth':
         this.shelf.maxSlots = value
@@ -517,17 +438,14 @@ export class Game {
     }
   }
 
-  /** Siphon: pull a matching letter from basin onto shelf. */
   siphonLetter(key: string) {
-    // Find the matching letter nearest the shelf
     const shelfY = this.shelf.y / SCALE
     let best: LetterBody | null = null
     let bestDist = Infinity
 
     for (const letter of this.letters) {
       if (letter.char.toLowerCase() !== key.toLowerCase()) continue
-      const pos = letter.body.translation()
-      const dist = Math.abs(pos.y - shelfY)
+      const dist = Math.abs(letter.y - shelfY)
       if (dist < bestDist) {
         bestDist = dist
         best = letter
@@ -539,23 +457,20 @@ export class Game {
     const placed = this.shelf.placeLetter(best.char, best.isUpper)
     if (!placed) return
 
-    // Remove from physics
-    this.world.removeRigidBody(best.body)
+    this.physics.remove(best.id)
     const idx = this.letters.indexOf(best)
     if (idx >= 0) this.letters.splice(idx, 1)
+    this.letterMap.delete(best.id)
     this.foregroundLetters.delete(best)
   }
 
-  /** Rebuild the mining word pool based on mining quality level. */
   updateMiningWords() {
     const minTier = getUpgradeValue('miningQuality', this.upgradeLevels.miningQuality)
-    const pool: string[] = [...MINING_WORDS] // always include the base common words
+    const pool: string[] = [...MINING_WORDS]
 
-    // Add dictionary words from eligible tiers
     for (let tier = 4; tier >= minTier; tier--) {
       const bucket = this.wordsByTier.get(tier)
       if (!bucket) continue
-      // Sample: tier 4/3 = all, tier 2 = 10%, tier 1 = 15%, tier 0 = 5%
       const sampleRate = tier >= 3 ? 1.0 : tier === 2 ? 0.1 : tier === 1 ? 0.15 : 0.05
       if (sampleRate >= 1) {
         pool.push(...bucket)
@@ -571,18 +486,16 @@ export class Game {
 
   basinShake() {
     const now = performance.now()
-    if (now - this.lastShakeTime < 3000) return // 3s cooldown
+    if (now - this.lastShakeTime < 3000) return
     this.lastShakeTime = now
-    const R = this.RAPIER
     for (const letter of this.letters) {
       const ix = (Math.random() - 0.5) * 8
       const iy = -(Math.random() * 4 + 2)
-      letter.body.applyImpulse(new R.Vector2(ix, iy), true)
-      letter.body.applyTorqueImpulse((Math.random() - 0.5) * 2, true)
+      this.physics.applyImpulse(letter.id, ix, iy)
+      this.physics.applyTorqueImpulse(letter.id, (Math.random() - 0.5) * 2)
     }
   }
 
-  /** Apply all upgrade side effects (called on load). */
   applyAllUpgrades() {
     for (const track of Object.keys(this.upgradeLevels) as UpgradeTrack[]) {
       this.applyUpgrade(track)
@@ -612,10 +525,8 @@ export class Game {
   }
 
   dumpShelfLetters(letters?: Array<{ char: string }>) {
-    // If called directly (Escape), grab current shelf letters and clear
     if (!letters) {
       letters = [...this.shelf.letters]
-      // Positions must be read before clear()
     }
     if (letters.length === 0) return
     const positions = letters.map((_, i) => this.shelf.slotPosition(i))
@@ -627,10 +538,8 @@ export class Game {
     this.pendingForeground = now
   }
 
-  // Timestamp for marking newly spawned letters as foreground after flush
   private pendingForeground = 0
 
-  /** Queue a letter to spawn. Safe to call from any context. */
   spawnLetter(char: string, x: number, y: number) {
     this.spawnQueue.push({ char, x, y })
   }
@@ -640,12 +549,11 @@ export class Game {
     for (const s of this.spawnQueue) {
       const glyph = this.glyphs[s.char]
       if (!glyph) continue
-      const letter = createLetterBody(this.RAPIER, this.world, glyph, s.x / SCALE, s.y / SCALE)
-      if (letter) {
-        this.letters.push(letter)
-        if (markForeground) {
-          this.foregroundLetters.set(letter, this.pendingForeground)
-        }
+      const letter = this.physics.spawn(glyph, s.x, s.y)
+      this.letters.push(letter)
+      this.letterMap.set(letter.id, letter)
+      if (markForeground) {
+        this.foregroundLetters.set(letter, this.pendingForeground)
       }
     }
     this.spawnQueue.length = 0
@@ -659,7 +567,6 @@ export class Game {
     const max = this.getBasinCapacity()
 
     if (this.isDraining) {
-      // Wait until all letters are gone, then restore
       if (count === 0) {
         this.isDraining = false
         this.overflowCountdown = 0
@@ -674,15 +581,12 @@ export class Game {
       }
       this.overflowCountdown -= dt
       if (this.overflowCountdown <= 0) {
-        // Drain!
         this.isDraining = true
         this.overflowCountdown = 0
         this.removeFloor()
-        // Also dump shelf letters
         this.dumpShelfLetters()
       }
     } else {
-      // Back under capacity — reset countdown
       this.overflowCountdown = 0
     }
   }
@@ -691,9 +595,9 @@ export class Game {
     const killY = (this.height + BASIN.killPlaneOffset) / SCALE
     for (let i = this.letters.length - 1; i >= 0; i--) {
       const letter = this.letters[i]!
-      const pos = letter.body.translation()
-      if (pos.y > killY) {
-        this.world.removeRigidBody(letter.body)
+      if (letter.y > killY) {
+        this.physics.remove(letter.id)
+        this.letterMap.delete(letter.id)
         this.foregroundLetters.delete(letter)
         this.letters.splice(i, 1)
       }
@@ -707,10 +611,8 @@ export class Game {
 
     if (count < warnAt && !this.isDraining) return
 
-    // Intensity ramps from 0 at warnAt to 1 at max, stays 1 past max
     let intensity = Math.min(1, (count - warnAt) / (max - warnAt))
 
-    // Pulsate when countdown is active
     if (this.overflowCountdown > 0) {
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 150)
       intensity = Math.max(intensity, 0.6 + 0.4 * pulse)
@@ -725,28 +627,24 @@ export class Game {
 
     ctx.save()
 
-    // Top edge
     const topGrad = ctx.createLinearGradient(0, 0, 0, spread)
     topGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
     topGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
     ctx.fillStyle = topGrad
     ctx.fillRect(0, 0, this.width, spread)
 
-    // Bottom edge
     const botGrad = ctx.createLinearGradient(0, this.height, 0, this.height - spread)
     botGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
     botGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
     ctx.fillStyle = botGrad
     ctx.fillRect(0, this.height - spread, this.width, spread)
 
-    // Left edge
     const leftGrad = ctx.createLinearGradient(0, 0, spread, 0)
     leftGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
     leftGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
     ctx.fillStyle = leftGrad
     ctx.fillRect(0, 0, spread, this.height)
 
-    // Right edge
     const rightGrad = ctx.createLinearGradient(this.width, 0, this.width - spread, 0)
     rightGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
     rightGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
@@ -771,7 +669,6 @@ export class Game {
     const shelfTop = this.shelf.rect.y
     const by = shelfTop - boxHeight - 12
 
-    // Container
     ctx.fillStyle = COLORS.bg
     ctx.beginPath()
     ctx.roundRect(bx, by, boxWidth, boxHeight, 8)
@@ -782,7 +679,6 @@ export class Game {
     ctx.roundRect(bx, by, boxWidth, boxHeight, 8)
     ctx.stroke()
 
-    // Capacity bar
     const barPad = 16
     const barWidth = boxWidth - barPad * 2
     const barHeight = 14
@@ -806,7 +702,6 @@ export class Game {
     ctx.textBaseline = 'middle'
     ctx.fillText(`${count} / ${max}`, barX + barWidth / 2, barY + barHeight / 2)
 
-    // Warning / countdown message
     if (this.overflowCountdown > 0) {
       ctx.fillStyle = COLORS.error
       ctx.font = `bold 18px ${FONT_FAMILY}`
@@ -826,6 +721,7 @@ export class Game {
 
   lastTime = 0
   accumulator = 0
+  private waitingForStep = false
 
   start() {
     this.lastTime = performance.now()
@@ -847,14 +743,45 @@ export class Game {
     let steps = 0
     while (this.accumulator >= FIXED_DT && steps < MAX_SUBSTEPS) {
       this.drag.applySpringForce()
-      this.world.step()
       this.accumulator -= FIXED_DT
       steps++
     }
     if (steps >= MAX_SUBSTEPS) this.accumulator = 0
 
-    this.render()
-    requestAnimationFrame(this.loop)
+    if (steps > 0 && !this.waitingForStep) {
+      this.waitingForStep = true
+      // Send step requests for the number of physics steps needed
+      let remaining = steps
+      const stepOnce = () => {
+        this.physics.step((bodies) => {
+          this.applyBodyStates(bodies)
+          remaining--
+          if (remaining > 0) {
+            this.drag.applySpringForce()
+            stepOnce()
+          } else {
+            this.waitingForStep = false
+            this.render()
+            requestAnimationFrame(this.loop)
+          }
+        })
+      }
+      stepOnce()
+    } else {
+      this.render()
+      requestAnimationFrame(this.loop)
+    }
+  }
+
+  private applyBodyStates(bodies: BodyState[]) {
+    for (const state of bodies) {
+      const letter = this.letterMap.get(state.id)
+      if (letter) {
+        letter.x = state.x
+        letter.y = state.y
+        letter.rotation = state.rotation
+      }
+    }
   }
 
   render() {
@@ -866,7 +793,6 @@ export class Game {
 
     this.mining.render(ctx, this.width)
 
-    // Overflow vignette (behind letters, on top of background)
     this.renderOverflowVignette(ctx)
 
     const dpr = window.devicePixelRatio
@@ -874,44 +800,37 @@ export class Game {
     const hovered = this.drag.getHovered()
     const now = performance.now()
 
-    // Expire foreground status
     for (const [letter, time] of this.foregroundLetters) {
       if (now - time > FOREGROUND_MS) this.foregroundLetters.delete(letter)
     }
 
-    // Word compass: highlight next chars for undiscovered words
     const compassChars = this.unlockedUniques.has('wordCompass')
       ? this.shelf.getCompassChars(this.economy.discoveredWords).available
       : null
 
-    // Word ghost: completion chars for any valid word
     const ghostChars =
       this.unlockedUniques.has('wordGhost') && !compassChars
         ? this.shelf.getCompletionChars()
         : null
 
-    // Vowel bloom + ghost/compass glow
     const vowelBloom = this.unlockedUniques.has('vowelBloom')
     const vowels = 'aeiouAEIOU'
     const getGlow = (letter: LetterBody): string | null => {
       const lc = letter.char.toLowerCase()
-      if (compassChars?.has(lc)) return '#4A7C59' // green — discovery path
-      if (ghostChars?.has(lc)) return '#6B4423' // burnt sienna — any completion
+      if (compassChars?.has(lc)) return '#4A7C59'
+      if (ghostChars?.has(lc)) return '#6B4423'
       if (vowelBloom && vowels.includes(letter.char)) return '#8B7355'
       return null
     }
 
-    // Basin letters (behind shelf)
     for (const letter of this.letters) {
       if (letter === dragging) continue
       if (this.foregroundLetters.has(letter)) continue
       this.renderer.renderLetter(ctx, letter, dpr, letter === hovered, getGlow(letter))
     }
 
-    // Shelf (foreground)
     this.shelf.render(ctx)
 
-    // Foreground letters (just released / cleared from shelf)
     for (const [letter] of this.foregroundLetters) {
       if (letter === dragging) continue
       if (!this.letters.includes(letter)) {
@@ -921,15 +840,12 @@ export class Game {
       this.renderer.renderLetter(ctx, letter, dpr, letter === hovered, getGlow(letter))
     }
 
-    // Dragged letter (topmost)
     if (dragging) {
       this.renderer.renderLetter(ctx, dragging, dpr)
     }
 
-    // Overflow HUD (on top of everything)
     this.renderOverflowHUD(ctx)
 
-    // Economy HUD (topmost layer)
     this.hud.render(ctx, this.width, this.height)
   }
 }

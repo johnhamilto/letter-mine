@@ -43,14 +43,12 @@ export class LetterRenderer {
     highlighted = false,
     glowColor: string | null = null,
   ) {
-    const pos = letter.body.translation()
-    const rot = letter.body.rotation()
     const glyph = letter.glyph
     const scale = letter.renderScale
 
     ctx.save()
-    ctx.translate(pos.x * SCALE, pos.y * SCALE)
-    ctx.rotate(rot)
+    ctx.translate(letter.x * SCALE, letter.y * SCALE)
+    ctx.rotate(letter.rotation)
 
     if (this.showGlyphs) {
       const oc = this.getCachedGlyph(glyph, letter.isUpper, scale)
@@ -77,25 +75,6 @@ export class LetterRenderer {
       if (highlighted || glowColor) {
         ctx.shadowColor = 'transparent'
         ctx.shadowBlur = 0
-      }
-    }
-
-    if (this.showColliders) {
-      const numColliders = letter.body.numColliders()
-      for (let c = 0; c < numColliders; c++) {
-        const collider = letter.body.collider(c)
-        const verts = collider.vertices()
-        if (verts && verts.length >= 4) {
-          ctx.strokeStyle = 'rgba(220, 40, 40, 0.7)'
-          ctx.lineWidth = 1.5 / scale
-          ctx.beginPath()
-          ctx.moveTo(verts[0]! * SCALE, verts[1]! * SCALE)
-          for (let i = 2; i < verts.length; i += 2) {
-            ctx.lineTo(verts[i]! * SCALE, verts[i + 1]! * SCALE)
-          }
-          ctx.closePath()
-          ctx.stroke()
-        }
       }
     }
 
