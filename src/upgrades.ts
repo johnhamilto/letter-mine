@@ -33,8 +33,8 @@ export const TIERED_UPGRADES: readonly TieredUpgradeDef[] = [
   {
     track: 'miningQuality',
     name: 'Mining Quality',
-    description: 'Chance to mine rare letters',
-    values: [0, 0.08, 0.16, 0.25, 0.35], // chance to substitute a rare letter
+    description: 'Ink earned per letter mined',
+    values: [0.1, 0.2, 0.3, 0.4, 0.5], // ink per keystroke
     costs: [1500, 6000, 20000, 80000],
     requiredMilestone: 'journeyman',
   },

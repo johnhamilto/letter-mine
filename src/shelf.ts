@@ -35,8 +35,8 @@ export class Shelf {
 
   /** When true, shows validation status and blocks invalid submissions. */
   wordCheckEnabled = false
+  siphonActive = false
 
-  submittedWords: string[] = []
   onSubmit: (() => void) | null = null
 
   // Error flash state
@@ -57,7 +57,7 @@ export class Shelf {
   private submitBtnText: Text | null = null
   private placeholderText: Text | null = null
   private errorText: Text | null = null
-  private recentTexts: Text[] = []
+  private cursorGfx: Graphics | null = null
 
   constructor(initialSlots: number = SHELF.maxSlots) {
     this.maxSlots = initialSlots
@@ -230,7 +230,6 @@ export class Shelf {
     }
 
     if (this.wordStatus === 'valid') {
-      this.submittedWords.push(word)
       this.letters = []
       this.wordStatus = 'none'
       return { valid: true, word, letters: [], submittedLetters }
@@ -297,6 +296,11 @@ export class Shelf {
     const isShaking = errorElapsed < ERROR_FLASH_MS
 
     // Clean up previous frame's dynamic elements
+    if (this.cursorGfx) {
+      this.cursorGfx.removeFromParent()
+      this.cursorGfx.destroy()
+      this.cursorGfx = null
+    }
     for (const t of this.letterTexts) {
       t.removeFromParent()
       t.destroy()
@@ -322,12 +326,6 @@ export class Shelf {
       this.errorText.destroy()
       this.errorText = null
     }
-    for (const t of this.recentTexts) {
-      t.removeFromParent()
-      t.destroy()
-    }
-    this.recentTexts.length = 0
-
     // Container background
     this.bg.clear()
     this.bg.roundRect(r.x, r.y, r.w, r.h, SHELF.cornerRadius)
@@ -338,7 +336,7 @@ export class Shelf {
       width: SHELF.borderWidth,
     })
 
-    if (this.letters.length === 0) {
+    if (this.letters.length === 0 && !this.siphonActive) {
       this.placeholderText = new Text({
         text: 'click or drag letters here',
         style: {
@@ -420,6 +418,17 @@ export class Shelf {
       }
     }
 
+    // Siphon cursor — underscore after the last letter
+    if (this.siphonActive && this.letters.length < this.maxSlots) {
+      const cursorIdx = this.letters.length
+      const pos = this.slotPosition(cursorIdx)
+      const sw = this.effectiveSlotWidth
+      this.cursorGfx = new Graphics()
+      this.cursorGfx.rect(pos.x - sw / 2, pos.y + 20, sw, 2.5)
+      this.cursorGfx.fill(COLORS.valid)
+      this.container.addChild(this.cursorGfx)
+    }
+
     // Error tooltip
     if (this.errorMessage && errorElapsed < TOOLTIP_MS) {
       const tooltipAlpha =
@@ -443,23 +452,5 @@ export class Shelf {
       this.container.addChild(this.errorText)
     }
 
-    // Recent submissions
-    if (this.submittedWords.length > 0) {
-      const recent = this.submittedWords.slice(-5)
-      for (let i = 0; i < recent.length; i++) {
-        const t = new Text({
-          text: recent[i]!,
-          style: {
-            fontFamily: 'Playfair Display',
-            fontSize: 14,
-            fill: COLORS.muted,
-          },
-        })
-        t.anchor.set(1, 0)
-        t.position.set(r.x + r.w, r.y + r.h + 8 + i * 18)
-        this.container.addChild(t)
-        this.recentTexts.push(t)
-      }
-    }
   }
 }

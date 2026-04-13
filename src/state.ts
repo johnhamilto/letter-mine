@@ -11,7 +11,6 @@ export interface GameState {
   discoveredWords: string[]
   discoveredRoots: string[]
   streak: number
-  submittedWords: string[]
   upgradeLevels: Record<UpgradeTrack, number>
   unlockedUniques: UniqueUpgrade[]
   highestMilestone: MilestoneName | null
@@ -33,7 +32,6 @@ export function defaultState(): GameState {
     discoveredWords: [],
     discoveredRoots: [],
     streak: 0,
-    submittedWords: [],
     upgradeLevels: { ...DEFAULT_UPGRADE_LEVELS },
     unlockedUniques: [],
     highestMilestone: null,
@@ -81,7 +79,6 @@ export function loadState(): GameState | null {
       discoveredWords: obj.discoveredWords as string[],
       discoveredRoots: Array.isArray(obj.discoveredRoots) ? (obj.discoveredRoots as string[]) : [],
       streak: typeof obj.streak === 'number' ? obj.streak : 0,
-      submittedWords: Array.isArray(obj.submittedWords) ? (obj.submittedWords as string[]) : [],
       upgradeLevels,
       unlockedUniques: Array.isArray(obj.unlockedUniques)
         ? (obj.unlockedUniques as UniqueUpgrade[])

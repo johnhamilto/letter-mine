@@ -104,9 +104,11 @@ export class Economy {
     this.streak = 0
   }
 
+  letterMinedInk: number = SCORING.letterMinedInk
+
   creditLetterMined(): number {
-    this.ink += SCORING.letterMinedInk
-    this.totalInkEarned += SCORING.letterMinedInk
+    this.ink += this.letterMinedInk
+    this.totalInkEarned += this.letterMinedInk
     return this.ink
   }
 
@@ -121,11 +123,9 @@ export class Economy {
   }
 
   /** Snapshot economy fields into a partial state. Caller merges with upgrade/milestone data. */
-  toPartialState(
-    submittedWords: string[],
-  ): Pick<
+  toPartialState(): Pick<
     GameState,
-    'ink' | 'totalInkEarned' | 'discoveredWords' | 'discoveredRoots' | 'streak' | 'submittedWords'
+    'ink' | 'totalInkEarned' | 'discoveredWords' | 'discoveredRoots' | 'streak'
   > {
     return {
       ink: this.ink,
@@ -133,7 +133,6 @@ export class Economy {
       discoveredWords: [...this.discoveredWords],
       discoveredRoots: [...this.discoveredRoots],
       streak: this.streak,
-      submittedWords,
     }
   }
 

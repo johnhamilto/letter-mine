@@ -47,6 +47,7 @@ export class MiningPrompt {
   private canvas: OffscreenCanvas
   private ctx: OffscreenCanvasRenderingContext2D
   private currentWidth = 0
+  private dpr = window.devicePixelRatio
 
   constructor(options: MiningOptions) {
     this.onLetterMined = options.onLetterMined
@@ -192,16 +193,19 @@ export class MiningPrompt {
       this.scrollOffset = targetScrollY
     }
 
-    // Resize canvas if screen width changed
+    // Resize canvas if screen width changed (render at DPR scale for sharpness)
+    const dpr = this.dpr
     const canvasHeight = MINING.lineHeight * 4
     if (this.currentWidth !== screenWidth) {
       this.currentWidth = screenWidth
-      this.canvas.width = screenWidth
-      this.canvas.height = canvasHeight
+      this.canvas.width = screenWidth * dpr
+      this.canvas.height = canvasHeight * dpr
     }
 
     const ctx = this.ctx
-    ctx.clearRect(0, 0, screenWidth, canvasHeight)
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
+    ctx.save()
+    ctx.scale(dpr, dpr)
 
     this.charScreenPositions.clear()
 
@@ -231,7 +235,7 @@ export class MiningPrompt {
         })
 
         if (pc.char === ' ') {
-          if (globalIdx === this.cursorPos && !pc.mined) {
+          if (!this.paused && globalIdx === this.cursorPos && !pc.mined) {
             ctx.globalAlpha = 1
             ctx.fillStyle = COLORS.valid
             ctx.fillRect(x, lineBaseY + 4, charWidth, 2.5)
@@ -266,19 +270,24 @@ export class MiningPrompt {
         ctx.globalAlpha = 1
         ctx.fillText(pc.char, x + shakeX, lineBaseY)
 
-        if (globalIdx === this.cursorPos && !pc.mined) {
+        if (!this.paused && globalIdx === this.cursorPos && !pc.mined) {
           ctx.fillStyle = COLORS.valid
           ctx.fillRect(x, lineBaseY + 4, charWidth, 2.5)
         }
       }
     }
 
-    // Update sprite texture from canvas
+    ctx.restore()
+
+    // Update sprite texture from canvas (with DPR resolution for sharpness)
     const oldTexture = this.sprite.texture
     if (oldTexture !== Texture.EMPTY) {
       oldTexture.destroy(true)
     }
-    this.sprite.texture = Texture.from(this.canvas.transferToImageBitmap())
+    this.sprite.texture = Texture.from({
+      resource: this.canvas.transferToImageBitmap(),
+      resolution: dpr,
+    })
   }
 
   destroy() {

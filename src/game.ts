@@ -1,4 +1,4 @@
-import { type Application, Container, Graphics, Text } from 'pixi.js'
+import { type Application, Container, Graphics, Text, Sprite, Texture } from 'pixi.js'
 import { PhysicsProxy } from './physics'
 import { MiningPrompt } from './mining'
 import { DragController } from './drag'
@@ -26,8 +26,6 @@ import {
   MAX_SUBSTEPS,
   FOREGROUND_MS,
   BASIN,
-  RARE_LETTERS,
-  UNCOMMON_LETTERS,
 } from './constants'
 import type {
   GlyphData,
@@ -89,8 +87,10 @@ export class Game {
   private hudLayer: Container
   private overflowHudContainer = new Container()
 
-  // Overflow vignette graphics
-  private vignetteGfx = new Graphics()
+  // Overflow vignette — rendered to OffscreenCanvas for gradient support
+  private vignetteSprite = new Sprite()
+  private vignetteCanvas: OffscreenCanvas | null = null
+  private vignetteCtx: OffscreenCanvasRenderingContext2D | null = null
 
   // Overflow HUD elements
   private overflowContainer = new Container()
@@ -126,9 +126,6 @@ export class Game {
     // Shelf
     this.shelf = new Shelf()
     this.shelf.onSubmit = () => this.submitShelf()
-    if (saved) {
-      this.shelf.submittedWords = saved.submittedWords
-    }
 
     // Initial shop render
     this.renderShopUI()
@@ -218,7 +215,6 @@ export class Game {
           this.economy.discoveredWords.clear()
           this.economy.discoveredRoots.clear()
           this.economy.streak = 0
-          this.shelf.submittedWords = []
         },
         onResetState: () => {
           localStorage.removeItem('letter-mine-save')
@@ -240,8 +236,7 @@ export class Game {
     // Mining prompt
     this.mining = new MiningPrompt({
       onLetterMined: (char, screenX, screenY) => {
-        const spawned = this.applyMiningQuality(char)
-        this.spawnLetter(spawned, screenX, screenY)
+        this.spawnLetter(char, screenX, screenY)
         this.economy.creditLetterMined()
       },
     })
@@ -294,6 +289,13 @@ export class Game {
         e.preventDefault()
         this.siphonMode = !this.siphonMode
         this.mining.paused = this.siphonMode
+        this.shelf.siphonActive = this.siphonMode
+        return
+      }
+
+      if (this.siphonMode && e.key === 'Backspace') {
+        e.preventDefault()
+        this.siphonBackspace()
         return
       }
 
@@ -327,7 +329,7 @@ export class Game {
     stage.addChild(this.bgLayer)
     stage.addChild(this.miningLayer)
     stage.addChild(this.vignetteLayer)
-    this.vignetteLayer.addChild(this.vignetteGfx)
+    this.vignetteLayer.addChild(this.vignetteSprite)
     stage.addChild(this.renderer.basinLayer)
     stage.addChild(this.shelfLayer)
     stage.addChild(this.renderer.foregroundLayer)
@@ -385,7 +387,7 @@ export class Game {
 
   buildSaveState(): GameState {
     return {
-      ...this.economy.toPartialState(this.shelf.submittedWords),
+      ...this.economy.toPartialState(),
       upgradeLevels: { ...this.upgradeLevels },
       unlockedUniques: [...this.unlockedUniques],
       highestMilestone: this.highestMilestone,
@@ -418,7 +420,7 @@ export class Game {
       milestone: this.highestMilestone,
       upgradeLevels: this.upgradeLevels,
       ownedUniques: this.unlockedUniques,
-      showButton: this.shelf.submittedWords.length > 0 || this.highestMilestone !== null,
+      showButton: this.economy.discoveredWords.size > 0 || this.highestMilestone !== null,
       onOpen: () => this.openShop(),
       onClose: () => this.closeShop(),
       onBuyTiered: (track) => this.buyTieredUpgrade(track),
@@ -503,6 +505,7 @@ export class Game {
         this.economy.inkMultiplierBonus = value
         break
       case 'miningQuality':
+        this.economy.letterMinedInk = value
         break
       case 'autoMiner':
         this.autoMiner.rate = value
@@ -515,16 +518,6 @@ export class Game {
     }
   }
 
-  applyMiningQuality(char: string): string {
-    const chance = getUpgradeValue('miningQuality', this.upgradeLevels.miningQuality)
-    if (chance <= 0 || Math.random() >= chance) return char
-
-    const isUpper = char >= 'A' && char <= 'Z'
-    // 40% rare (j,k,q,v,x,z), 60% uncommon (b,f,g,m,p,w)
-    const pool = Math.random() < 0.4 ? RARE_LETTERS : UNCOMMON_LETTERS
-    const picked = pool[Math.floor(Math.random() * pool.length)]!
-    return isUpper ? picked.toUpperCase() : picked.toLowerCase()
-  }
 
   siphonLetter(key: string) {
     const shelfY = this.shelf.y / SCALE
@@ -551,6 +544,11 @@ export class Game {
     this.letterMap.delete(best.id)
     this.foregroundLetters.delete(best)
     this.renderer.removeSprite(best)
+  }
+
+  siphonBackspace() {
+    if (this.shelf.letters.length === 0) return
+    this.dumpShelfLetters(this.shelf.letters.length - 1)
   }
 
   basinShake() {
@@ -593,7 +591,17 @@ export class Game {
     }
   }
 
-  dumpShelfLetters(letters?: Array<{ char: string }>) {
+  dumpShelfLetters(target?: number | Array<{ char: string }>) {
+    if (typeof target === 'number') {
+      const pos = this.shelf.slotPosition(target)
+      const removed = this.shelf.removeLetter(target)
+      if (!removed) return
+      this.spawnLetter(removed.char, pos.x, pos.y)
+      this.pendingForeground = performance.now()
+      return
+    }
+
+    let letters = target
     if (!letters) {
       letters = [...this.shelf.letters]
     }
@@ -680,9 +688,10 @@ export class Game {
     const max = this.getBasinCapacity()
     const warnAt = Math.floor(max * BASIN.warnRatio)
 
-    this.vignetteGfx.clear()
-
-    if (count < warnAt && !this.isDraining) return
+    if (count < warnAt && !this.isDraining) {
+      this.vignetteSprite.visible = false
+      return
+    }
 
     let intensity = Math.min(1, (count - warnAt) / (max - warnAt))
 
@@ -693,30 +702,66 @@ export class Game {
       intensity = 1
     }
 
-    if (intensity <= 0) return
+    if (intensity <= 0) {
+      this.vignetteSprite.visible = false
+      return
+    }
+
+    const dpr = window.devicePixelRatio
+    const w = this.width
+    const h = this.height
+
+    // Lazily create / resize the offscreen canvas
+    if (!this.vignetteCanvas || this.vignetteCanvas.width !== w * dpr || this.vignetteCanvas.height !== h * dpr) {
+      this.vignetteCanvas = new OffscreenCanvas(w * dpr, h * dpr)
+      this.vignetteCtx = this.vignetteCanvas.getContext('2d')
+    }
+    const ctx = this.vignetteCtx!
+    ctx.clearRect(0, 0, w * dpr, h * dpr)
+    ctx.save()
+    ctx.scale(dpr, dpr)
 
     const alpha = intensity * 0.35
     const spread = 60 + intensity * 80
-    const r = 192
-    const g = 57
-    const b = 43
-    const color = (r << 16) | (g << 8) | b
 
     // Top edge
-    this.vignetteGfx.rect(0, 0, this.width, spread)
-    this.vignetteGfx.fill({ color, alpha })
+    const topGrad = ctx.createLinearGradient(0, 0, 0, spread)
+    topGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
+    topGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
+    ctx.fillStyle = topGrad
+    ctx.fillRect(0, 0, w, spread)
 
     // Bottom edge
-    this.vignetteGfx.rect(0, this.height - spread, this.width, spread)
-    this.vignetteGfx.fill({ color, alpha })
+    const botGrad = ctx.createLinearGradient(0, h, 0, h - spread)
+    botGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
+    botGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
+    ctx.fillStyle = botGrad
+    ctx.fillRect(0, h - spread, w, spread)
 
     // Left edge
-    this.vignetteGfx.rect(0, 0, spread, this.height)
-    this.vignetteGfx.fill({ color, alpha: alpha * 0.6 })
+    const leftGrad = ctx.createLinearGradient(0, 0, spread, 0)
+    leftGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
+    leftGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
+    ctx.fillStyle = leftGrad
+    ctx.fillRect(0, 0, spread, h)
 
     // Right edge
-    this.vignetteGfx.rect(this.width - spread, 0, spread, this.height)
-    this.vignetteGfx.fill({ color, alpha: alpha * 0.6 })
+    const rightGrad = ctx.createLinearGradient(w, 0, w - spread, 0)
+    rightGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
+    rightGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
+    ctx.fillStyle = rightGrad
+    ctx.fillRect(w - spread, 0, spread, h)
+
+    ctx.restore()
+
+    // Upload to sprite texture
+    const oldTex = this.vignetteSprite.texture
+    if (oldTex !== Texture.EMPTY) oldTex.destroy(true)
+    this.vignetteSprite.texture = Texture.from({
+      resource: this.vignetteCanvas.transferToImageBitmap(),
+      resolution: dpr,
+    })
+    this.vignetteSprite.visible = true
   }
 
   renderOverflowHUD() {
