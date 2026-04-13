@@ -14,6 +14,7 @@ import {
   UNIQUE_UPGRADES,
 } from './upgrades'
 import { renderShop } from './shop.tsx'
+import { renderDictionaryScreen } from './dictionary-screen.tsx'
 import { AutoMiner } from './auto-miner'
 import { ApprenticeShelf } from './apprentice-shelf'
 import { saveState } from './state'
@@ -71,6 +72,7 @@ export class Game {
   unlockedUniques: Set<UniqueUpgrade> = new Set()
   highestMilestone: MilestoneName | null = null
   shopOpen = false
+  dictionaryOpen = false
   private lastShopRefresh = 0
   private lastShakeTime = 0
   autoMiner: AutoMiner
@@ -120,6 +122,7 @@ export class Game {
     }
     this.hud = new Hud(this.economy)
     this.hud.getMilestone = () => this.highestMilestone
+    this.hud.onDictionaryOpen = () => this.openDictionary()
     const reached = milestoneReached(this.economy.totalInkEarned)
     if (reached) this.highestMilestone = reached
 
@@ -129,6 +132,7 @@ export class Game {
 
     // Initial shop render
     this.renderShopUI()
+    this.renderDictionaryUI()
 
     // Build PixiJS scene graph (back-to-front)
     this.shelfLayer = this.shelf.container
@@ -280,6 +284,11 @@ export class Game {
 
     // Keyboard
     window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.dictionaryOpen) {
+        this.closeDictionary()
+        return
+      }
+
       if (e.key === 'Escape' && this.shopOpen) {
         this.closeShop()
         return
@@ -425,6 +434,26 @@ export class Game {
       onClose: () => this.closeShop(),
       onBuyTiered: (track) => this.buyTieredUpgrade(track),
       onBuyUnique: (id) => this.buyUniqueUpgrade(id),
+    })
+  }
+
+  openDictionary() {
+    this.dictionaryOpen = true
+    this.renderDictionaryUI()
+  }
+
+  closeDictionary() {
+    this.dictionaryOpen = false
+    this.renderDictionaryUI()
+  }
+
+  renderDictionaryUI() {
+    renderDictionaryScreen({
+      open: this.dictionaryOpen,
+      discoveredWords: this.economy.discoveredWords,
+      dictionary: this.dictionary,
+      totalInkEarned: this.economy.totalInkEarned,
+      onClose: () => this.closeDictionary(),
     })
   }
 
@@ -846,6 +875,7 @@ export class Game {
     if (now - this.lastShopRefresh > 500) {
       this.lastShopRefresh = now
       this.renderShopUI()
+      if (this.dictionaryOpen) this.renderDictionaryUI()
     }
     this.updateOverflow(frameDt)
     this.killOffscreen()

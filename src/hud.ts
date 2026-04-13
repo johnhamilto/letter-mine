@@ -13,6 +13,7 @@ export class Hud {
   private milestoneText: string | null = null
   private milestoneTime = 0
   getMilestone: () => MilestoneName | null = () => null
+  onDictionaryOpen: (() => void) | null = null
 
   readonly container = new Container()
 
@@ -21,6 +22,7 @@ export class Hud {
   private barFill: HTMLDivElement
   private barLabel: HTMLDivElement
   private barTooltip: HTMLDivElement
+  private dictButton: HTMLButtonElement
 
   // PixiJS text objects
   private inkText: Text
@@ -52,6 +54,15 @@ export class Hud {
     this.barContainer.appendChild(this.barTooltip)
 
     document.body.appendChild(this.barContainer)
+
+    // Dictionary button (DOM overlay matching discovered text position)
+    this.dictButton = document.createElement('button')
+    this.dictButton.className = 'dict-btn'
+    this.dictButton.textContent = '0 discovered'
+    this.dictButton.addEventListener('click', () => {
+      if (this.onDictionaryOpen) this.onDictionaryOpen()
+    })
+    document.body.appendChild(this.dictButton)
 
     // Ink counter
     this.inkText = new Text({
@@ -161,7 +172,10 @@ export class Hud {
 
   private renderDiscoveredCount() {
     const count = this.economy.discoveredWords.size
-    this.discoveredText.text = `${count} discovered`
+    const label = `${count} discovered`
+    this.discoveredText.text = label
+    this.discoveredText.visible = false
+    this.dictButton.textContent = label
   }
 
   private updateMilestoneBar() {

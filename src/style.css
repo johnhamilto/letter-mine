@@ -315,3 +315,196 @@ html, body {
   cursor: default;
   pointer-events: none;
 }
+
+/* ── Dictionary button ── */
+
+.dict-btn {
+  position: fixed;
+  top: 42px;
+  left: 20px;
+  font-family: 'Playfair Display', serif;
+  font-size: 13px;
+  color: #9E8E76;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  z-index: 5;
+  transition: color 0.15s;
+}
+
+.dict-btn:hover {
+  color: #2C2416;
+}
+
+/* ── Dictionary overlay ── */
+
+.dict-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 16, 8, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.dict-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dict-panel {
+  width: 600px;
+  max-width: 92vw;
+  max-height: 85vh;
+  background: #F5F0E8;
+  border: 2px solid #8B7355;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(44, 36, 22, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dict-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #C4B69C;
+}
+
+.dict-header h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px;
+  font-weight: bold;
+  color: #2C2416;
+  margin: 0;
+}
+
+.dict-subtitle {
+  font-family: 'Playfair Display', serif;
+  font-size: 13px;
+  color: #9E8E76;
+  margin-top: 2px;
+}
+
+.dict-close {
+  font-family: 'Playfair Display', serif;
+  font-size: 16px;
+  font-weight: bold;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid #8B7355;
+  border-radius: 4px;
+  background: transparent;
+  color: #9E8E76;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.dict-close:hover {
+  background: #2C2416;
+  color: #EDE6D6;
+}
+
+.dict-content {
+  overflow-y: auto;
+  padding: 12px 20px 20px;
+  flex: 1;
+}
+
+/* ── Tier sections ── */
+
+.dict-tier {
+  margin-bottom: 16px;
+}
+
+.dict-tier-header {
+  font-family: 'Playfair Display', serif;
+  font-size: 15px;
+  font-weight: bold;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.dict-tier-mult {
+  font-size: 13px;
+  font-weight: normal;
+  opacity: 0.7;
+}
+
+.dict-tier-count {
+  font-size: 12px;
+  font-weight: normal;
+  color: #9E8E76;
+  margin-left: auto;
+}
+
+.dict-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.dict-word {
+  font-family: 'Playfair Display', serif;
+  font-size: 13px;
+  color: #2C2416;
+  background: #EDE6D6;
+  border: 1px solid #C4B69C;
+  border-radius: 3px;
+  padding: 2px 8px;
+  line-height: 1.4;
+}
+
+.dict-undiscovered {
+  font-family: 'Playfair Display', serif;
+  font-size: 12px;
+  font-style: italic;
+  color: #C4B69C;
+  padding: 2px 4px;
+}
+
+/* ── Stats ── */
+
+.dict-stats {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #C4B69C;
+}
+
+.dict-stats-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 15px;
+  font-weight: bold;
+  color: #2C2416;
+  margin-bottom: 8px;
+}
+
+.dict-stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.dict-stat-label {
+  font-family: 'Playfair Display', serif;
+  font-size: 13px;
+  color: #9E8E76;
+}
+
+.dict-stat-value {
+  font-family: 'Playfair Display', serif;
+  font-size: 13px;
+  font-weight: bold;
+  color: #2C2416;
+}
