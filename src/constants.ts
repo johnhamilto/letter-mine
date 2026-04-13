@@ -86,6 +86,11 @@ export const STARTING = {
   shelfSlots: 4,
 } as const
 
+// ── Mining quality ──
+// Letters weighted toward rarer/harder-to-use characters
+export const RARE_LETTERS = 'jkqvxzJKQVXZ'
+export const UNCOMMON_LETTERS = 'bfgmpwBFGMPW'
+
 // ── Scoring ──
 export const SCORING = {
   tierMultipliers: [15, 6, 3, 1.5, 1] as const, // indexed by tier 0-4

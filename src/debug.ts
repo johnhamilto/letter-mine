@@ -23,7 +23,7 @@ export interface DevPanelCallbacks {
 export function createDevPanel(callbacks: DevPanelCallbacks): HTMLDivElement {
   const root = document.createElement('div')
   root.style.cssText = `
-    position:fixed;top:12px;right:12px;z-index:100;
+    position:fixed;top:12px;right:90px;z-index:100;
     font-family:${FONT_FAMILY},serif;font-size:13px;
   `
 

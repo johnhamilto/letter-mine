@@ -8,6 +8,7 @@
     "build": "bunx vite build",
     "build:dict": "bun run scripts/build-dictionary.ts",
     "build:glyphs": "bun run scripts/build-glyphs.ts",
+    "build:markov": "bun run scripts/build-markov.ts",
     "lint": "bunx eslint src/",
     "lint:fix": "bunx eslint src/ --fix",
     "format": "bunx prettier --write 'src/**/*.ts' '*.md' '.github/**/*.yml'",

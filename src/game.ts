@@ -7,13 +7,19 @@ import { LetterRenderer } from './render'
 import { Economy } from './economy'
 import { Hud } from './hud'
 import { loadState, startAutoSave, type GameState } from './state'
-import { getUpgradeValue, getUpgradeCost, milestoneReached, UNIQUE_UPGRADES } from './upgrades'
+import {
+  getUpgradeValue,
+  getUpgradeCost,
+  milestoneReached,
+  UNIQUE_UPGRADES,
+  hasAffordableUpgrade,
+} from './upgrades'
 import { Shop } from './shop'
 import { AutoMiner } from './auto-miner'
 import { ApprenticeShelf } from './apprentice-shelf'
 import { saveState } from './state'
 import { createDevPanel } from './debug'
-import { MINING_WORDS } from './data/words'
+import { MarkovGenerator, type MarkovData } from './markov'
 import {
   SCALE,
   COLORS,
@@ -23,6 +29,8 @@ import {
   FOREGROUND_MS,
   BASIN,
   FONT_FAMILY,
+  RARE_LETTERS,
+  UNCOMMON_LETTERS,
 } from './constants'
 import type {
   GlyphData,
@@ -71,13 +79,11 @@ export class Game {
   shopOpen = false
   shop: Shop
   shopBtn: HTMLButtonElement
+  private lastShopRefresh = 0
   private lastShakeTime = 0
   autoMiner: AutoMiner
   siphonMode = false
   apprenticeShelf: ApprenticeShelf | null = null
-
-  /** Dictionary words bucketed by tier for mining quality upgrades. */
-  private wordsByTier: Map<number, string[]> = new Map()
 
   private spawnQueue: Array<{ char: string; x: number; y: number }> = []
 
@@ -209,9 +215,9 @@ export class Game {
 
     // Mining prompt
     this.mining = new MiningPrompt({
-      words: MINING_WORDS,
       onLetterMined: (char, screenX, screenY) => {
-        this.spawnLetter(char, screenX, screenY)
+        const spawned = this.applyMiningQuality(char)
+        this.spawnLetter(spawned, screenX, screenY)
         this.economy.creditLetterMined()
       },
     })
@@ -260,9 +266,6 @@ export class Game {
         return
       }
 
-      // Block game input when shop is open
-      if (this.shopOpen) return
-
       // Siphon: Tab toggles focus mode
       if (e.key === 'Tab' && this.unlockedUniques.has('siphon')) {
         e.preventDefault()
@@ -292,11 +295,15 @@ export class Game {
     this.shopBtn = document.createElement('button')
     this.shopBtn.className = 'shop-btn'
     this.shopBtn.textContent = 'Shop'
-    this.shopBtn.addEventListener('click', () => this.openShop())
+    this.shopBtn.addEventListener('click', () => {
+      if (this.shopOpen) this.closeShop()
+      else this.openShop()
+    })
     if (this.shelf.submittedWords.length > 0) this.shopBtn.style.display = 'block'
     document.body.appendChild(this.shopBtn)
 
     this.loadDictionary()
+    this.loadMarkov()
 
     // Auto-save every 30s + on page unload
     startAutoSave(() => this.buildSaveState())
@@ -377,24 +384,22 @@ export class Game {
       this.shelf.loadDictionary(words)
       this.shelf.discoveredWords = this.economy.discoveredWords
 
-      // Bucket words by tier for mining quality (only short common-ish words)
-      for (const [word, entry] of Object.entries(data)) {
-        if (word.length < 2 || word.length > 8) continue
-        const tier = entry.tier
-        let bucket = this.wordsByTier.get(tier)
-        if (!bucket) {
-          bucket = []
-          this.wordsByTier.set(tier, bucket)
-        }
-        bucket.push(word)
-      }
-
-      // Apply mining quality now that word tiers are loaded
-      this.updateMiningWords()
-
       console.log(`Dictionary loaded: ${words.size} words`)
     } catch {
       console.warn('Dictionary not found — shelf validation disabled')
+    }
+  }
+
+  async loadMarkov() {
+    try {
+      const resp = await fetch(`${import.meta.env.BASE_URL}markov.json`)
+      const data = (await resp.json()) as MarkovData
+      this.mining.markov = new MarkovGenerator(data)
+      console.log(
+        `Markov chain loaded: ${data.starts.length} starts, ${Object.keys(data.transitions).length} transitions`,
+      )
+    } catch {
+      console.warn('Markov data not found — using fallback word list')
     }
   }
 
@@ -420,14 +425,24 @@ export class Game {
 
   openShop() {
     this.shopOpen = true
-    this.mining.paused = true
+    this.shopBtn.classList.add('shop-open')
     this.shop.show()
   }
 
   closeShop() {
     this.shopOpen = false
-    this.mining.paused = false
+    this.shopBtn.classList.remove('shop-open')
     this.shop.hide()
+  }
+
+  updateShopBadge() {
+    const affordable = hasAffordableUpgrade(
+      this.economy.ink,
+      this.highestMilestone,
+      this.upgradeLevels,
+      this.unlockedUniques,
+    )
+    this.shopBtn.classList.toggle('has-available', affordable)
   }
 
   getBasinCapacity(): number {
@@ -504,7 +519,6 @@ export class Game {
         this.economy.inkMultiplierBonus = value
         break
       case 'miningQuality':
-        this.updateMiningWords()
         break
       case 'autoMiner':
         this.autoMiner.rate = value
@@ -515,6 +529,18 @@ export class Game {
         }
         break
     }
+  }
+
+  /** Roll for a rare letter substitution based on mining quality level. */
+  applyMiningQuality(char: string): string {
+    const chance = getUpgradeValue('miningQuality', this.upgradeLevels.miningQuality)
+    if (chance <= 0 || Math.random() >= chance) return char
+
+    const isUpper = char >= 'A' && char <= 'Z'
+    // 40% rare (j,k,q,v,x,z), 60% uncommon (b,f,g,m,p,w)
+    const pool = Math.random() < 0.4 ? RARE_LETTERS : UNCOMMON_LETTERS
+    const picked = pool[Math.floor(Math.random() * pool.length)]!
+    return isUpper ? picked.toUpperCase() : picked.toLowerCase()
   }
 
   /** Siphon: pull a matching letter from basin onto shelf. */
@@ -546,28 +572,6 @@ export class Game {
     this.foregroundLetters.delete(best)
   }
 
-  /** Rebuild the mining word pool based on mining quality level. */
-  updateMiningWords() {
-    const minTier = getUpgradeValue('miningQuality', this.upgradeLevels.miningQuality)
-    const pool: string[] = [...MINING_WORDS] // always include the base common words
-
-    // Add dictionary words from eligible tiers
-    for (let tier = 4; tier >= minTier; tier--) {
-      const bucket = this.wordsByTier.get(tier)
-      if (!bucket) continue
-      // Sample: tier 4/3 = all, tier 2 = 10%, tier 1 = 15%, tier 0 = 5%
-      const sampleRate = tier >= 3 ? 1.0 : tier === 2 ? 0.1 : tier === 1 ? 0.15 : 0.05
-      if (sampleRate >= 1) {
-        pool.push(...bucket)
-      } else {
-        for (const word of bucket) {
-          if (Math.random() < sampleRate) pool.push(word)
-        }
-      }
-    }
-
-    this.mining.words = pool
-  }
 
   basinShake() {
     const now = performance.now()
@@ -840,6 +844,11 @@ export class Game {
     this.autoMiner.update(frameDt)
     this.apprenticeShelf?.update(frameDt)
     this.flushSpawnQueue()
+    this.updateShopBadge()
+    if (this.shopOpen && now - this.lastShopRefresh > 500) {
+      this.lastShopRefresh = now
+      this.shop.update()
+    }
     this.updateOverflow(frameDt)
     this.killOffscreen()
 

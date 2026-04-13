@@ -5,6 +5,7 @@
 
 import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
 import { COLORS, MINING, PROMPT_FONT } from './constants'
+import type { MarkovGenerator } from './markov'
 
 interface PromptChar {
   char: string
@@ -20,12 +21,11 @@ interface PromptLine {
 }
 
 interface MiningOptions {
-  words: string[]
   onLetterMined: (char: string, screenX: number, screenY: number) => void
 }
 
 export class MiningPrompt {
-  words: string[]
+  markov: MarkovGenerator | null = null
   private onLetterMined: MiningOptions['onLetterMined']
 
   paused = false
@@ -33,7 +33,6 @@ export class MiningPrompt {
   private lines: PromptLine[] = []
   private cursorPos = 0
   private wordCount = 0
-  private uppercaseInterval = 8
 
   private topLineIdx = 0
   private scrollOffset = 0
@@ -41,24 +40,15 @@ export class MiningPrompt {
   private charScreenPositions = new Map<number, { x: number; y: number }>()
 
   constructor(options: MiningOptions) {
-    this.words = options.words
     this.onLetterMined = options.onLetterMined
     window.addEventListener('keydown', this.handleKey)
   }
 
   private generateText(wordCount: number): string {
-    const parts: string[] = []
-    for (let i = 0; i < wordCount; i++) {
-      const word = this.words[Math.floor(Math.random() * this.words.length)]!
-      const isUpperWord = this.wordCount % this.uppercaseInterval === 0
-      let formatted = word
-      if (isUpperWord) {
-        formatted = word[0]!.toUpperCase() + word.slice(1)
-      }
-      parts.push(formatted)
-      this.wordCount++
-    }
-    return parts.join(' ')
+    if (!this.markov) return ''
+    const words = this.markov.generateWords(wordCount)
+    this.wordCount += words.length
+    return words.join(' ')
   }
 
   private buildLines(screenWidth: number): PromptLine[] {

@@ -27,23 +27,19 @@ export class Shop {
   private cb: ShopCallbacks
   private root: HTMLDivElement
   private content: HTMLDivElement
+  private affordabilityUpdaters: Array<() => void> = []
 
   constructor(cb: ShopCallbacks) {
     this.cb = cb
 
-    // Overlay
+    // Overlay (pointer-events: none — only the panel captures input)
     this.root = document.createElement('div')
     this.root.className = 'shop-overlay'
-    this.root.style.display = 'none'
-    this.root.addEventListener('mousedown', (e) => e.stopPropagation())
-    this.root.addEventListener('click', (e) => {
-      // Click on backdrop closes shop
-      if (e.target === this.root) cb.onClose()
-    })
 
-    // Panel
+    // Panel (drawer from right edge)
     const panel = document.createElement('div')
     panel.className = 'shop-panel'
+    panel.addEventListener('mousedown', (e) => e.stopPropagation())
     this.root.appendChild(panel)
 
     // Header
@@ -69,19 +65,21 @@ export class Shop {
 
   show() {
     this.rebuild()
-    this.root.style.display = 'flex'
+    this.root.classList.add('open')
   }
 
   hide() {
-    this.root.style.display = 'none'
+    this.root.classList.remove('open')
   }
 
   get visible(): boolean {
-    return this.root.style.display !== 'none'
+    return this.root.classList.contains('open')
   }
 
   rebuild() {
+    const scrollTop = this.content.scrollTop
     this.content.innerHTML = ''
+    this.affordabilityUpdaters = []
     const milestone = this.cb.getMilestone()
     const ink = this.cb.getInk()
 
@@ -122,6 +120,12 @@ export class Shop {
 
       this.content.appendChild(section)
     }
+    this.content.scrollTop = scrollTop
+  }
+
+  /** Lightweight update — refreshes button enabled/disabled states without rebuilding DOM. */
+  update() {
+    for (const fn of this.affordabilityUpdaters) fn()
   }
 
   private buildTieredRow(def: TieredUpgradeDef, unlocked: boolean, ink: number): HTMLElement {
@@ -164,13 +168,16 @@ export class Shop {
       const btn = document.createElement('button')
       btn.className = `shop-buy${canBuy ? '' : ' disabled'}`
       btn.textContent = `${cost.toLocaleString()} Ink`
-      if (canBuy) {
-        btn.addEventListener('click', () => {
-          this.cb.onBuyTiered(def.track)
-          this.rebuild()
-        })
-      }
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('disabled')) return
+        this.cb.onBuyTiered(def.track)
+        this.rebuild()
+      })
       right.appendChild(btn)
+
+      this.affordabilityUpdaters.push(() => {
+        btn.className = `shop-buy${unlocked && this.cb.getInk() >= cost ? '' : ' disabled'}`
+      })
     }
 
     row.appendChild(right)
@@ -208,13 +215,16 @@ export class Shop {
       const btn = document.createElement('button')
       btn.className = `shop-buy${canBuy ? '' : ' disabled'}`
       btn.textContent = `${def.cost.toLocaleString()} Ink`
-      if (canBuy) {
-        btn.addEventListener('click', () => {
-          this.cb.onBuyUnique(def.id)
-          this.rebuild()
-        })
-      }
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('disabled')) return
+        this.cb.onBuyUnique(def.id)
+        this.rebuild()
+      })
       right.appendChild(btn)
+
+      this.affordabilityUpdaters.push(() => {
+        btn.className = `shop-buy${unlocked && this.cb.getInk() >= def.cost ? '' : ' disabled'}`
+      })
     }
 
     row.appendChild(right)

@@ -33,8 +33,8 @@ export const TIERED_UPGRADES: readonly TieredUpgradeDef[] = [
   {
     track: 'miningQuality',
     name: 'Mining Quality',
-    description: 'Rarer words in the mining prompt',
-    values: [3, 2, 1, 0], // min tier in prompt pool
+    description: 'Chance to mine rare letters',
+    values: [0, 0.08, 0.16, 0.25, 0.35], // chance to substitute a rare letter
     costs: [1500, 6000, 20000, 80000],
     requiredMilestone: 'journeyman',
   },
@@ -200,4 +200,26 @@ export function isMilestoneAtLeast(
 
 export function getMilestoneDef(name: MilestoneName): MilestoneDef | undefined {
   return MILESTONES.find((m) => m.name === name)
+}
+
+/** Returns true if any upgrade (tiered or unique) is affordable right now. */
+export function hasAffordableUpgrade(
+  ink: number,
+  milestone: MilestoneName | null,
+  upgradeLevels: Record<UpgradeTrack, number>,
+  unlockedUniques: Set<UniqueUpgrade>,
+): boolean {
+  for (const def of TIERED_UPGRADES) {
+    if (!isMilestoneAtLeast(milestone, def.requiredMilestone)) continue
+    const level = upgradeLevels[def.track]
+    if (isMaxLevel(def.track, level)) continue
+    const cost = getUpgradeCost(def.track, level)
+    if (cost !== null && ink >= cost) return true
+  }
+  for (const def of UNIQUE_UPGRADES) {
+    if (!isMilestoneAtLeast(milestone, def.requiredMilestone)) continue
+    if (unlockedUniques.has(def.id)) continue
+    if (ink >= def.cost) return true
+  }
+  return false
 }
