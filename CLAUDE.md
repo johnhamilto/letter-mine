@@ -164,6 +164,7 @@ wt prune --force           # Remove all clean worktrees (skip only uncommitted)
 - Dev servers in different worktrees need different ports — pass `--port` to avoid collisions.
 - Never work directly on `main` in a worktree. Main branch stays in the repo root.
 - `.wt/` is gitignored — worktrees are local-only, not committed.
+- After merging a feature branch, run `wt prune --force` to clean up the worktree.
 
 ## Gotchas
 
