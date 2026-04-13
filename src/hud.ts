@@ -1,6 +1,7 @@
-/** HUD — economy display: ink counter, discovered count, score flash, milestone flash. */
+/** HUD -- economy display: ink counter, discovered count, score flash, milestone flash. */
 
-import { COLORS, FONT_FAMILY, SCORING } from './constants'
+import { Container, Graphics, Text } from 'pixi.js'
+import { COLORS, SCORING } from './constants'
 import type { Economy } from './economy'
 import { getMilestoneDef, MILESTONES } from './upgrades'
 import type { MilestoneName } from './types'
@@ -13,11 +14,23 @@ export class Hud {
   private milestoneTime = 0
   getMilestone: () => MilestoneName | null = () => null
 
+  readonly container = new Container()
+
   // DOM elements for milestone bar
   private barContainer: HTMLDivElement
   private barFill: HTMLDivElement
   private barLabel: HTMLDivElement
   private barTooltip: HTMLDivElement
+
+  // PixiJS text objects
+  private inkText: Text
+  private discoveredText: Text
+  private scoreFlashText: Text
+  private scoreBonusText: Text
+  private milestoneContainer: Container
+  private milestoneBg: Graphics
+  private milestoneLabelText: Text
+  private milestoneNameText: Text
 
   constructor(economy: Economy) {
     this.economy = economy
@@ -39,6 +52,92 @@ export class Hud {
     this.barContainer.appendChild(this.barTooltip)
 
     document.body.appendChild(this.barContainer)
+
+    // Ink counter
+    this.inkText = new Text({
+      text: '0 Ink',
+      style: {
+        fontFamily: 'Playfair Display',
+        fontSize: 22,
+        fontWeight: 'bold',
+        fill: COLORS.ink,
+      },
+    })
+    this.inkText.position.set(20, 14)
+    this.container.addChild(this.inkText)
+
+    // Discovered count
+    this.discoveredText = new Text({
+      text: '0 discovered',
+      style: {
+        fontFamily: 'Playfair Display',
+        fontSize: 16,
+        fill: COLORS.muted,
+      },
+    })
+    this.discoveredText.position.set(20, 42)
+    this.container.addChild(this.discoveredText)
+
+    // Score flash
+    this.scoreFlashText = new Text({
+      text: '',
+      style: {
+        fontFamily: 'Playfair Display',
+        fontSize: 28,
+        fontWeight: 'bold',
+        fill: COLORS.valid,
+        align: 'center',
+      },
+    })
+    this.scoreFlashText.anchor.set(0.5, 1)
+    this.scoreFlashText.visible = false
+    this.container.addChild(this.scoreFlashText)
+
+    this.scoreBonusText = new Text({
+      text: '',
+      style: {
+        fontFamily: 'Playfair Display',
+        fontSize: 14,
+        fill: COLORS.muted,
+        align: 'center',
+      },
+    })
+    this.scoreBonusText.anchor.set(0.5, 1)
+    this.scoreBonusText.visible = false
+    this.container.addChild(this.scoreBonusText)
+
+    // Milestone flash
+    this.milestoneContainer = new Container()
+    this.milestoneContainer.visible = false
+    this.container.addChild(this.milestoneContainer)
+
+    this.milestoneBg = new Graphics()
+    this.milestoneContainer.addChild(this.milestoneBg)
+
+    this.milestoneLabelText = new Text({
+      text: 'MILESTONE REACHED',
+      style: {
+        fontFamily: 'Playfair Display',
+        fontSize: 13,
+        fill: COLORS.muted,
+        align: 'center',
+      },
+    })
+    this.milestoneLabelText.anchor.set(0.5, 0.5)
+    this.milestoneContainer.addChild(this.milestoneLabelText)
+
+    this.milestoneNameText = new Text({
+      text: '',
+      style: {
+        fontFamily: 'Playfair Display',
+        fontSize: 36,
+        fontWeight: 'bold',
+        fill: COLORS.ink,
+        align: 'center',
+      },
+    })
+    this.milestoneNameText.anchor.set(0.5, 0.5)
+    this.milestoneContainer.addChild(this.milestoneNameText)
   }
 
   showMilestone(name: MilestoneName) {
@@ -47,36 +146,22 @@ export class Hud {
     this.milestoneTime = performance.now()
   }
 
-  render(ctx: CanvasRenderingContext2D, screenWidth: number, screenHeight: number) {
-    this.renderInkCounter(ctx)
-    this.renderDiscoveredCount(ctx)
+  render(screenWidth: number, screenHeight: number) {
+    this.renderInkCounter()
+    this.renderDiscoveredCount()
     this.updateMilestoneBar()
-    this.renderScoreFlash(ctx, screenWidth)
-    this.renderMilestoneFlash(ctx, screenWidth, screenHeight)
+    this.renderScoreFlash(screenWidth)
+    this.renderMilestoneFlash(screenWidth, screenHeight)
   }
 
-  private renderInkCounter(ctx: CanvasRenderingContext2D) {
+  private renderInkCounter() {
     const ink = Math.floor(this.economy.ink)
-
-    ctx.save()
-    ctx.fillStyle = COLORS.ink
-    ctx.font = `bold 22px ${FONT_FAMILY}`
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
-    ctx.fillText(`${ink} Ink`, 20, 36)
-    ctx.restore()
+    this.inkText.text = `${ink} Ink`
   }
 
-  private renderDiscoveredCount(ctx: CanvasRenderingContext2D) {
+  private renderDiscoveredCount() {
     const count = this.economy.discoveredWords.size
-
-    ctx.save()
-    ctx.fillStyle = COLORS.muted
-    ctx.font = `16px ${FONT_FAMILY}`
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
-    ctx.fillText(`${count} discovered`, 20, 58)
-    ctx.restore()
+    this.discoveredText.text = `${count} discovered`
   }
 
   private updateMilestoneBar() {
@@ -102,52 +187,58 @@ export class Hud {
     this.barTooltip.textContent = `${Math.floor(totalInk).toLocaleString()} / ${nextMs.totalInkRequired.toLocaleString()} Ink`
   }
 
-  private renderScoreFlash(ctx: CanvasRenderingContext2D, screenWidth: number) {
+  private renderScoreFlash(screenWidth: number) {
     const score = this.economy.lastScore
-    if (!score) return
+    if (!score) {
+      this.scoreFlashText.visible = false
+      this.scoreBonusText.visible = false
+      return
+    }
 
     const elapsed = performance.now() - this.economy.lastScoreTime
-    if (elapsed > SCORING.scoreFlashMs) return
+    if (elapsed > SCORING.scoreFlashMs) {
+      this.scoreFlashText.visible = false
+      this.scoreBonusText.visible = false
+      return
+    }
 
     const t = elapsed / SCORING.scoreFlashMs
     const alpha = t < 0.2 ? t / 0.2 : 1 - (t - 0.2) / 0.8
     const yOffset = t * -30
 
-    ctx.save()
-    ctx.globalAlpha = Math.max(0, alpha)
-
     const centerX = screenWidth / 2
     const baseY = 80 + yOffset
 
-    ctx.fillStyle = score.isRepeat ? COLORS.muted : COLORS.valid
-    ctx.font = `bold 28px ${FONT_FAMILY}`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'alphabetic'
-    ctx.fillText(`+${score.finalInk} Ink`, centerX, baseY)
+    this.scoreFlashText.visible = true
+    this.scoreFlashText.text = `+${score.finalInk} Ink`
+    this.scoreFlashText.style.fill = score.isRepeat ? COLORS.muted : COLORS.valid
+    this.scoreFlashText.position.set(centerX, baseY)
+    this.scoreFlashText.alpha = Math.max(0, alpha)
 
     if (score.bonuses.length > 0 || score.isRepeat) {
       const tags: string[] = []
       if (score.isRepeat) tags.push('repeat')
       for (const b of score.bonuses) tags.push(b.label)
 
-      ctx.fillStyle = COLORS.muted
-      ctx.font = `14px ${FONT_FAMILY}`
-      ctx.fillText(tags.join(' / '), centerX, baseY + 22)
+      this.scoreBonusText.visible = true
+      this.scoreBonusText.text = tags.join(' / ')
+      this.scoreBonusText.position.set(centerX, baseY + 22)
+      this.scoreBonusText.alpha = Math.max(0, alpha)
+    } else {
+      this.scoreBonusText.visible = false
     }
-
-    ctx.restore()
   }
 
-  private renderMilestoneFlash(
-    ctx: CanvasRenderingContext2D,
-    screenWidth: number,
-    screenHeight: number,
-  ) {
-    if (!this.milestoneText) return
+  private renderMilestoneFlash(screenWidth: number, screenHeight: number) {
+    if (!this.milestoneText) {
+      this.milestoneContainer.visible = false
+      return
+    }
 
     const elapsed = performance.now() - this.milestoneTime
     if (elapsed > MILESTONE_FLASH_MS) {
       this.milestoneText = null
+      this.milestoneContainer.visible = false
       return
     }
 
@@ -163,40 +254,24 @@ export class Hud {
 
     const centerX = screenWidth / 2
     const centerY = screenHeight * 0.25
-
-    // Scale punch: starts at 1.15, settles to 1.0
     const scale = t < 0.15 ? 1 + 0.15 * (1 - t / 0.15) : 1
 
-    ctx.save()
-    ctx.globalAlpha = Math.max(0, alpha)
-    ctx.translate(centerX, centerY)
-    ctx.scale(scale, scale)
+    this.milestoneContainer.visible = true
+    this.milestoneContainer.position.set(centerX, centerY)
+    this.milestoneContainer.scale.set(scale)
+    this.milestoneContainer.alpha = Math.max(0, alpha)
 
-    // Full-width dimmed backdrop
     const bw = 380
     const bh = 90
-    ctx.fillStyle = 'rgba(245, 240, 232, 0.92)'
-    ctx.beginPath()
-    ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 12)
-    ctx.fill()
-    ctx.strokeStyle = COLORS.valid
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 12)
-    ctx.stroke()
 
-    // "Milestone Reached" label
-    ctx.fillStyle = COLORS.muted
-    ctx.font = `13px ${FONT_FAMILY}`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText('MILESTONE REACHED', 0, -20)
+    this.milestoneBg.clear()
+    this.milestoneBg.roundRect(-bw / 2, -bh / 2, bw, bh, 12)
+    this.milestoneBg.fill({ color: 0xf5f0e8, alpha: 0.92 })
+    this.milestoneBg.roundRect(-bw / 2, -bh / 2, bw, bh, 12)
+    this.milestoneBg.stroke({ color: COLORS.valid, width: 2 })
 
-    // Milestone name
-    ctx.fillStyle = COLORS.ink
-    ctx.font = `bold 36px ${FONT_FAMILY}`
-    ctx.fillText(this.milestoneText.toUpperCase(), 0, 14)
-
-    ctx.restore()
+    this.milestoneLabelText.position.set(0, -20)
+    this.milestoneNameText.text = this.milestoneText.toUpperCase()
+    this.milestoneNameText.position.set(0, 14)
   }
 }

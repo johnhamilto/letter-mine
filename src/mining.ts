@@ -1,9 +1,11 @@
 /**
- * Mining prompt — lines of text at the top of the screen.
+ * Mining prompt -- lines of text at the top of the screen.
  * Line breaking powered by @chenglou/pretext.
+ * Renders to an OffscreenCanvas, displayed as a PixiJS Sprite.
  */
 
 import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
+import { Container, Sprite, Texture } from 'pixi.js'
 import { COLORS, MINING, PROMPT_FONT } from './constants'
 
 interface PromptChar {
@@ -40,9 +42,26 @@ export class MiningPrompt {
 
   private charScreenPositions = new Map<number, { x: number; y: number }>()
 
+  /** PixiJS container for mining text. */
+  readonly container = new Container()
+  private sprite: Sprite
+  private canvas: OffscreenCanvas
+  private ctx: OffscreenCanvasRenderingContext2D
+  private currentWidth = 0
+
   constructor(options: MiningOptions) {
     this.words = options.words
     this.onLetterMined = options.onLetterMined
+
+    this.canvas = new OffscreenCanvas(1, 1)
+    const ctx = this.canvas.getContext('2d')
+    if (!ctx) throw new Error('Cannot create mining canvas')
+    this.ctx = ctx
+
+    this.sprite = new Sprite()
+    this.sprite.position.set(0, 0)
+    this.container.addChild(this.sprite)
+
     window.addEventListener('keydown', this.handleKey)
   }
 
@@ -112,7 +131,6 @@ export class MiningPrompt {
     const pc = info.line.chars[info.charIdx]!
     const now = performance.now()
 
-    // Ignore spacebar when current char isn't a space
     if (e.key === ' ' && pc.char !== ' ') return
 
     if (pc.char === ' ') {
@@ -163,7 +181,7 @@ export class MiningPrompt {
     this.cursorPos++
   }
 
-  render(ctx: CanvasRenderingContext2D, screenWidth: number) {
+  render(screenWidth: number) {
     const now = performance.now()
 
     if (this.lines.length === 0) {
@@ -184,8 +202,18 @@ export class MiningPrompt {
       this.scrollOffset = targetScrollY
     }
 
+    // Resize canvas if screen width changed
+    const canvasHeight = MINING.lineHeight * 4
+    if (this.currentWidth !== screenWidth) {
+      this.currentWidth = screenWidth
+      this.canvas.width = screenWidth
+      this.canvas.height = canvasHeight
+    }
+
+    const ctx = this.ctx
+    ctx.clearRect(0, 0, screenWidth, canvasHeight)
+
     this.charScreenPositions.clear()
-    ctx.save()
 
     const firstVisible = Math.max(0, cursorLineIdx - 1)
     const lastVisible = cursorLineIdx + 2
@@ -255,7 +283,12 @@ export class MiningPrompt {
       }
     }
 
-    ctx.restore()
+    // Update sprite texture from canvas
+    const oldTexture = this.sprite.texture
+    if (oldTexture !== Texture.EMPTY) {
+      oldTexture.destroy(true)
+    }
+    this.sprite.texture = Texture.from(this.canvas.transferToImageBitmap())
   }
 
   destroy() {

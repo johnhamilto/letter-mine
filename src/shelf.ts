@@ -1,16 +1,17 @@
 /**
- * Shelf — foreground UI container for assembling words.
+ * Shelf -- foreground UI container for assembling words.
  * No physics body. Letters fall behind it.
  */
 
-import { SCALE, COLORS, SHELF, FONT_FAMILY } from './constants'
+import { Container, Graphics, Text } from 'pixi.js'
+import { SCALE, COLORS, SHELF } from './constants'
 import type { ShelfLetter, WordStatus } from './types'
 
 interface SubmitResult {
   valid: boolean
   word: string
-  letters: ShelfLetter[] // letters to dump back on invalid
-  submittedLetters: ShelfLetter[] // letters that were on shelf (for scoring)
+  letters: ShelfLetter[]
+  submittedLetters: ShelfLetter[]
 }
 
 const ERROR_FLASH_MS = 500
@@ -48,8 +49,19 @@ export class Shelf {
   private btnW = 70
   private btnH = 32
 
+  /** PixiJS container for shelf rendering. */
+  readonly container = new Container()
+  private bg = new Graphics()
+  private letterTexts: Text[] = []
+  private submitBtn: Graphics | null = null
+  private submitBtnText: Text | null = null
+  private placeholderText: Text | null = null
+  private errorText: Text | null = null
+  private recentTexts: Text[] = []
+
   constructor(initialSlots: number = SHELF.maxSlots) {
     this.maxSlots = initialSlots
+    this.container.addChild(this.bg)
   }
 
   loadDictionary(dict: Set<string>) {
@@ -180,7 +192,6 @@ export class Shelf {
     for (let c = 97; c <= 122; c++) {
       const ch = String.fromCharCode(c)
       const extended = current + ch
-      // Must lead to an undiscovered word (either directly or as a prefix of one)
       const isWord = this.dictionary.has(extended) && !discovered.has(extended)
       const isPrefix = this.prefixes.has(extended)
       if (isWord || isPrefix) {
@@ -225,13 +236,11 @@ export class Shelf {
       return { valid: true, word, letters: [], submittedLetters }
     }
 
-    // With Word Check: block invalid submission, keep letters
     if (this.wordCheckEnabled) {
       this.flashError('Not a word')
       return { valid: false, word, letters: [], submittedLetters: [] }
     }
 
-    // Without Word Check: dump letters back to basin
     const cleared = [...this.letters]
     this.letters = []
     this.wordStatus = 'none'
@@ -281,45 +290,92 @@ export class Shelf {
     return -1
   }
 
-  render(ctx: CanvasRenderingContext2D) {
+  render() {
     const r = this.rect
     const now = performance.now()
     const errorElapsed = now - this.errorTime
     const isShaking = errorElapsed < ERROR_FLASH_MS
 
-    // Container
-    ctx.fillStyle = COLORS.shelfBg
-    ctx.beginPath()
-    ctx.roundRect(r.x, r.y, r.w, r.h, SHELF.cornerRadius)
-    ctx.fill()
+    // Clean up previous frame's dynamic elements
+    for (const t of this.letterTexts) {
+      t.removeFromParent()
+      t.destroy()
+    }
+    this.letterTexts.length = 0
+    if (this.submitBtn) {
+      this.submitBtn.removeFromParent()
+      this.submitBtn.destroy()
+      this.submitBtn = null
+    }
+    if (this.submitBtnText) {
+      this.submitBtnText.removeFromParent()
+      this.submitBtnText.destroy()
+      this.submitBtnText = null
+    }
+    if (this.placeholderText) {
+      this.placeholderText.removeFromParent()
+      this.placeholderText.destroy()
+      this.placeholderText = null
+    }
+    if (this.errorText) {
+      this.errorText.removeFromParent()
+      this.errorText.destroy()
+      this.errorText = null
+    }
+    for (const t of this.recentTexts) {
+      t.removeFromParent()
+      t.destroy()
+    }
+    this.recentTexts.length = 0
 
-    ctx.strokeStyle = isShaking ? COLORS.error : COLORS.shelf
-    ctx.lineWidth = SHELF.borderWidth
-    ctx.beginPath()
-    ctx.roundRect(r.x, r.y, r.w, r.h, SHELF.cornerRadius)
-    ctx.stroke()
+    // Container background
+    this.bg.clear()
+    this.bg.roundRect(r.x, r.y, r.w, r.h, SHELF.cornerRadius)
+    this.bg.fill(COLORS.shelfBg)
+    this.bg.roundRect(r.x, r.y, r.w, r.h, SHELF.cornerRadius)
+    this.bg.stroke({
+      color: isShaking ? COLORS.error : COLORS.shelf,
+      width: SHELF.borderWidth,
+    })
 
     if (this.letters.length === 0) {
-      ctx.fillStyle = COLORS.muted
-      ctx.font = `italic 18px ${FONT_FAMILY}`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText('click or drag letters here', r.x + r.w / 2, r.y + r.h / 2)
+      this.placeholderText = new Text({
+        text: 'click or drag letters here',
+        style: {
+          fontFamily: 'Playfair Display',
+          fontSize: 18,
+          fontStyle: 'italic',
+          fill: COLORS.muted,
+          align: 'center',
+        },
+      })
+      this.placeholderText.anchor.set(0.5, 0.5)
+      this.placeholderText.position.set(r.x + r.w / 2, r.y + r.h / 2)
+      this.container.addChild(this.placeholderText)
     } else {
-      // Submit button (right side of container)
+      // Submit button
       this.btnX = r.x + r.w - this.btnW - 10
       this.btnY = r.y + (r.h - this.btnH) / 2
-      ctx.fillStyle = COLORS.valid
-      ctx.beginPath()
-      ctx.roundRect(this.btnX, this.btnY, this.btnW, this.btnH, 4)
-      ctx.fill()
-      ctx.fillStyle = COLORS.shelfBg
-      ctx.font = `bold 14px ${FONT_FAMILY}`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText('Submit', this.btnX + this.btnW / 2, this.btnY + this.btnH / 2)
 
-      // Letters — green if discovered, red if shaking
+      this.submitBtn = new Graphics()
+      this.submitBtn.roundRect(this.btnX, this.btnY, this.btnW, this.btnH, 4)
+      this.submitBtn.fill(COLORS.valid)
+      this.container.addChild(this.submitBtn)
+
+      this.submitBtnText = new Text({
+        text: 'Submit',
+        style: {
+          fontFamily: 'Playfair Display',
+          fontSize: 14,
+          fontWeight: 'bold',
+          fill: COLORS.shelfBg,
+          align: 'center',
+        },
+      })
+      this.submitBtnText.anchor.set(0.5, 0.5)
+      this.submitBtnText.position.set(this.btnX + this.btnW / 2, this.btnY + this.btnH / 2)
+      this.container.addChild(this.submitBtnText)
+
       const isDiscovered =
         this.discoveredWords !== null &&
         this.letters.length >= 4 &&
@@ -327,29 +383,40 @@ export class Shelf {
 
       const sw = this.effectiveSlotWidth
       const fontSize = Math.min(SCALE * 0.6, sw * 1.2)
-      ctx.font = `bold ${fontSize}px ${FONT_FAMILY}`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
 
       for (let i = 0; i < this.letters.length; i++) {
         const sl = this.letters[i]!
         const pos = this.slotPosition(i)
 
-        // Shake offset
         let shakeX = 0
         if (isShaking) {
           const t = errorElapsed / ERROR_FLASH_MS
           shakeX = Math.sin(t * Math.PI * 6) * 4 * (1 - t)
         }
 
+        let fill: string
         if (isShaking) {
-          ctx.fillStyle = COLORS.error
+          fill = COLORS.error
         } else if (isDiscovered) {
-          ctx.fillStyle = COLORS.valid
+          fill = COLORS.valid
         } else {
-          ctx.fillStyle = sl.isUpper ? COLORS.inkDark : COLORS.ink
+          fill = sl.isUpper ? COLORS.inkDark : COLORS.ink
         }
-        ctx.fillText(sl.char, pos.x + shakeX, pos.y)
+
+        const letterText = new Text({
+          text: sl.char,
+          style: {
+            fontFamily: 'Playfair Display',
+            fontSize,
+            fontWeight: 'bold',
+            fill,
+            align: 'center',
+          },
+        })
+        letterText.anchor.set(0.5, 0.5)
+        letterText.position.set(pos.x + shakeX, pos.y)
+        this.container.addChild(letterText)
+        this.letterTexts.push(letterText)
       }
     }
 
@@ -359,25 +426,39 @@ export class Shelf {
         errorElapsed < ERROR_FLASH_MS
           ? 1
           : 1 - (errorElapsed - ERROR_FLASH_MS) / (TOOLTIP_MS - ERROR_FLASH_MS)
-      ctx.save()
-      ctx.globalAlpha = Math.max(0, tooltipAlpha)
-      ctx.fillStyle = COLORS.error
-      ctx.font = `bold 13px ${FONT_FAMILY}`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'alphabetic'
-      ctx.fillText(this.errorMessage, r.x + r.w / 2, r.y + r.h + 18)
-      ctx.restore()
+
+      this.errorText = new Text({
+        text: this.errorMessage,
+        style: {
+          fontFamily: 'Playfair Display',
+          fontSize: 13,
+          fontWeight: 'bold',
+          fill: COLORS.error,
+          align: 'center',
+        },
+      })
+      this.errorText.anchor.set(0.5, 1)
+      this.errorText.position.set(r.x + r.w / 2, r.y + r.h + 18)
+      this.errorText.alpha = Math.max(0, tooltipAlpha)
+      this.container.addChild(this.errorText)
     }
 
     // Recent submissions
     if (this.submittedWords.length > 0) {
-      ctx.fillStyle = COLORS.muted
-      ctx.font = `14px ${FONT_FAMILY}`
-      ctx.textAlign = 'right'
-      ctx.textBaseline = 'alphabetic'
       const recent = this.submittedWords.slice(-5)
       for (let i = 0; i < recent.length; i++) {
-        ctx.fillText(recent[i]!, r.x + r.w, r.y + r.h + 20 + i * 18)
+        const t = new Text({
+          text: recent[i]!,
+          style: {
+            fontFamily: 'Playfair Display',
+            fontSize: 14,
+            fill: COLORS.muted,
+          },
+        })
+        t.anchor.set(1, 0)
+        t.position.set(r.x + r.w, r.y + r.h + 8 + i * 18)
+        this.container.addChild(t)
+        this.recentTexts.push(t)
       }
     }
   }
