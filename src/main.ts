@@ -1,4 +1,5 @@
 import RAPIER from '@dimforge/rapier2d-compat'
+import { Application } from 'pixi.js'
 import { Game } from './game'
 
 async function main() {
@@ -15,8 +16,25 @@ async function main() {
 
   const glyphData = await fetch(`${base}glyphs.json`).then((r) => r.json())
 
-  const canvas = document.getElementById('game') as HTMLCanvasElement
-  const game = new Game(canvas, RAPIER, glyphData)
+  const app = new Application()
+  await app.init({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    background: 0xf5f0e8,
+    antialias: true,
+    autoDensity: true,
+    resolution: window.devicePixelRatio,
+  })
+
+  // Disable PixiJS ticker — we drive rendering from our own rAF loop
+  app.ticker.stop()
+  app.ticker.autoStart = false
+
+  const container = document.getElementById('game')
+  if (!container) throw new Error('No #game container')
+  container.appendChild(app.canvas)
+
+  const game = new Game(app, RAPIER, glyphData)
   ;(window as unknown as Record<string, unknown>).__game = game
   game.start()
 }

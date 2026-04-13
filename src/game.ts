@@ -1,4 +1,5 @@
 import type RAPIER_NS from '@dimforge/rapier2d-compat'
+import { type Application, Container, Graphics, Text } from 'pixi.js'
 import { createLetterBody } from './physics'
 import { MiningPrompt } from './mining'
 import { DragController } from './drag'
@@ -42,8 +43,8 @@ import type {
 } from './types'
 
 export class Game {
+  app: Application
   canvas: HTMLCanvasElement
-  ctx: CanvasRenderingContext2D
   RAPIER: typeof RAPIER_NS
   glyphs: Record<string, GlyphData>
   world: RAPIER_NS.World
@@ -54,8 +55,8 @@ export class Game {
   floorBody: RAPIER_NS.RigidBody | null = null
 
   // Basin overflow state
-  overflowCountdown = 0 // seconds remaining, 0 = not overflowing
-  isDraining = false // floor removed, letters falling out
+  overflowCountdown = 0
+  isDraining = false
   mining: MiningPrompt
   drag: DragController
   shelf!: Shelf
@@ -87,18 +88,30 @@ export class Game {
 
   private spawnQueue: Array<{ char: string; x: number; y: number }> = []
 
-  constructor(
-    canvas: HTMLCanvasElement,
-    RAPIER: typeof RAPIER_NS,
-    glyphs: Record<string, GlyphData>,
-  ) {
-    this.canvas = canvas
+  // PixiJS layer containers (ordered back-to-front)
+  private bgLayer = new Container()
+  private miningLayer: Container
+  private vignetteLayer = new Container()
+  private shelfLayer: Container
+  private hudLayer: Container
+  private overflowHudContainer = new Container()
+
+  // Overflow vignette graphics
+  private vignetteGfx = new Graphics()
+
+  // Overflow HUD elements
+  private overflowContainer = new Container()
+  private overflowBg = new Graphics()
+  private overflowBarBg = new Graphics()
+  private overflowBarFill = new Graphics()
+  private overflowBarText: Text
+  private overflowMessageText: Text
+
+  constructor(app: Application, RAPIER: typeof RAPIER_NS, glyphs: Record<string, GlyphData>) {
+    this.app = app
+    this.canvas = app.canvas as HTMLCanvasElement
     this.RAPIER = RAPIER
     this.glyphs = glyphs
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('No 2d context')
-    this.ctx = ctx
 
     // Physics world
     this.world = new RAPIER.World(new RAPIER.Vector2(0, PHYSICS.gravity))
@@ -113,7 +126,7 @@ export class Game {
     // Renderer
     this.renderer = new LetterRenderer()
 
-    // Economy — hydrate from saved state if available
+    // Economy -- hydrate from saved state if available
     this.economy = new Economy()
     const saved = loadState()
     if (saved) {
@@ -124,8 +137,6 @@ export class Game {
     }
     this.hud = new Hud(this.economy)
     this.hud.getMilestone = () => this.highestMilestone
-    // Check milestones on load (may have earned ink before milestones existed)
-    // Suppress the flash on boot — just update the milestone level
     const reached = milestoneReached(this.economy.totalInkEarned)
     if (reached) this.highestMilestone = reached
 
@@ -146,6 +157,45 @@ export class Game {
       onBuyUnique: (id) => this.buyUniqueUpgrade(id),
       onClose: () => this.closeShop(),
     })
+
+    // Build PixiJS scene graph (back-to-front)
+    this.shelfLayer = this.shelf.container
+    this.hudLayer = this.hud.container
+
+    app.stage.addChild(this.bgLayer)
+
+    // Overflow HUD text objects
+    this.overflowBarText = new Text({
+      text: '',
+      style: {
+        fontFamily: 'Playfair Display',
+        fontSize: 11,
+        fontWeight: 'bold',
+        fill: COLORS.ink,
+        align: 'center',
+      },
+    })
+    this.overflowBarText.anchor.set(0.5, 0.5)
+
+    this.overflowMessageText = new Text({
+      text: '',
+      style: {
+        fontFamily: 'Playfair Display',
+        fontSize: 18,
+        fontWeight: 'bold',
+        fill: COLORS.error,
+        align: 'center',
+      },
+    })
+    this.overflowMessageText.anchor.set(0.5, 1)
+
+    this.overflowContainer.addChild(this.overflowBg)
+    this.overflowContainer.addChild(this.overflowBarBg)
+    this.overflowContainer.addChild(this.overflowBarFill)
+    this.overflowContainer.addChild(this.overflowBarText)
+    this.overflowContainer.addChild(this.overflowMessageText)
+    this.overflowContainer.visible = false
+    this.overflowHudContainer.addChild(this.overflowContainer)
 
     this.resize()
     window.addEventListener('resize', () => this.resize())
@@ -178,7 +228,6 @@ export class Game {
         onDiscoverWords: (count) => {
           const allWords = Object.keys(this.dictionary)
           const undiscovered = allWords.filter((w) => !this.economy.discoveredWords.has(w))
-          // Shuffle and pick N
           for (let i = undiscovered.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1))
             ;[undiscovered[i], undiscovered[j]] = [undiscovered[j]!, undiscovered[i]!]
@@ -221,6 +270,10 @@ export class Game {
         this.economy.creditLetterMined()
       },
     })
+    this.miningLayer = this.mining.container
+
+    // Rebuild scene graph now that mining exists
+    this.rebuildSceneGraph()
 
     // Auto-miner
     this.autoMiner = new AutoMiner(this.mining)
@@ -230,7 +283,7 @@ export class Game {
 
     // Drag controller
     this.drag = new DragController(
-      canvas,
+      this.canvas,
       RAPIER,
       this.world,
       this.letters,
@@ -239,6 +292,7 @@ export class Game {
         const idx = this.letters.indexOf(letter)
         if (idx >= 0) this.letters.splice(idx, 1)
         this.foregroundLetters.delete(letter)
+        this.renderer.removeSprite(letter)
       },
       (char, screenX, screenY) => {
         const glyph = this.glyphs[char]
@@ -250,7 +304,10 @@ export class Game {
           screenX / SCALE,
           screenY / SCALE,
         )
-        if (letter) this.letters.push(letter)
+        if (letter) {
+          this.letters.push(letter)
+          this.renderer.createSprite(letter)
+        }
         return letter
       },
       (letter) => {
@@ -260,11 +317,12 @@ export class Game {
 
     // Keyboard
     window.addEventListener('keydown', (e) => {
-      // Shop toggle
       if (e.key === 'Escape' && this.shopOpen) {
         this.closeShop()
         return
       }
+
+      if (this.shopOpen) return
 
       // Siphon: Tab toggles focus mode
       if (e.key === 'Tab' && this.unlockedUniques.has('siphon')) {
@@ -274,7 +332,6 @@ export class Game {
         return
       }
 
-      // Siphon mode: typing pulls letters from basin to shelf
       if (this.siphonMode && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
         this.siphonLetter(e.key)
@@ -309,13 +366,27 @@ export class Game {
     startAutoSave(() => this.buildSaveState())
   }
 
+  private rebuildSceneGraph() {
+    const stage = this.app.stage
+    stage.removeChildren()
+
+    // Back-to-front ordering
+    stage.addChild(this.bgLayer)
+    stage.addChild(this.miningLayer)
+    stage.addChild(this.vignetteLayer)
+    this.vignetteLayer.addChild(this.vignetteGfx)
+    stage.addChild(this.renderer.basinLayer)
+    stage.addChild(this.shelfLayer)
+    stage.addChild(this.renderer.foregroundLayer)
+    stage.addChild(this.renderer.dragLayer)
+    stage.addChild(this.overflowHudContainer)
+    stage.addChild(this.hudLayer)
+  }
+
   resize() {
-    const dpr = window.devicePixelRatio
     this.width = window.innerWidth
     this.height = window.innerHeight
-    this.canvas.width = this.width * dpr
-    this.canvas.height = this.height * dpr
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    this.app.renderer.resize(this.width, this.height)
 
     this.buildWalls()
     this.shelf.rebuild(this.width, this.height)
@@ -332,7 +403,6 @@ export class Game {
     const w = this.width / SCALE
     const h = this.height / SCALE
 
-    // Floor (tracked separately for drain mechanic)
     if (!this.isDraining) {
       const floor = this.world.createRigidBody(R.RigidBodyDesc.fixed().setTranslation(0, h))
       this.world.createCollider(R.ColliderDesc.halfspace(new R.Vector2(0, -1)), floor)
@@ -340,7 +410,6 @@ export class Game {
       this.floorBody = floor
     }
 
-    // Ceiling, left, right
     const sides: Array<{ x: number; y: number; nx: number; ny: number }> = [
       { x: 0, y: 0, nx: 0, ny: 1 },
       { x: 0, y: 0, nx: 1, ny: 0 },
@@ -386,7 +455,7 @@ export class Game {
 
       console.log(`Dictionary loaded: ${words.size} words`)
     } catch {
-      console.warn('Dictionary not found — shelf validation disabled')
+      console.warn('Dictionary not found -- shelf validation disabled')
     }
   }
 
@@ -483,6 +552,7 @@ export class Game {
               const idx = this.letters.indexOf(letter)
               if (idx >= 0) this.letters.splice(idx, 1)
               this.foregroundLetters.delete(letter)
+              this.renderer.removeSprite(letter)
             },
             getDiscoveredWords: () => this.economy.discoveredWords,
             getDictionary: () => this.dictionary,
@@ -510,7 +580,6 @@ export class Game {
     const value = getUpgradeValue(track, this.upgradeLevels[track])
     switch (track) {
       case 'basinCapacity':
-        // Overflow uses getBasinCapacity() — auto-updates
         break
       case 'shelfWidth':
         this.shelf.maxSlots = value
@@ -545,7 +614,6 @@ export class Game {
 
   /** Siphon: pull a matching letter from basin onto shelf. */
   siphonLetter(key: string) {
-    // Find the matching letter nearest the shelf
     const shelfY = this.shelf.y / SCALE
     let best: LetterBody | null = null
     let bestDist = Infinity
@@ -565,17 +633,17 @@ export class Game {
     const placed = this.shelf.placeLetter(best.char, best.isUpper)
     if (!placed) return
 
-    // Remove from physics
     this.world.removeRigidBody(best.body)
     const idx = this.letters.indexOf(best)
     if (idx >= 0) this.letters.splice(idx, 1)
     this.foregroundLetters.delete(best)
+    this.renderer.removeSprite(best)
   }
 
 
   basinShake() {
     const now = performance.now()
-    if (now - this.lastShakeTime < 3000) return // 3s cooldown
+    if (now - this.lastShakeTime < 3000) return
     this.lastShakeTime = now
     const R = this.RAPIER
     for (const letter of this.letters) {
@@ -604,7 +672,7 @@ export class Game {
       const entry = this.dictionary[normalized]
       const score = this.economy.scoreWord(result.word, result.submittedLetters, entry)
       console.log(
-        `Submitted: ${result.word} → +${score.finalInk} Ink`,
+        `Submitted: ${result.word} -> +${score.finalInk} Ink`,
         score.bonuses.map((b) => b.label).join(', '),
       )
       this.checkMilestones()
@@ -616,10 +684,8 @@ export class Game {
   }
 
   dumpShelfLetters(letters?: Array<{ char: string }>) {
-    // If called directly (Escape), grab current shelf letters and clear
     if (!letters) {
       letters = [...this.shelf.letters]
-      // Positions must be read before clear()
     }
     if (letters.length === 0) return
     const positions = letters.map((_, i) => this.shelf.slotPosition(i))
@@ -631,7 +697,6 @@ export class Game {
     this.pendingForeground = now
   }
 
-  // Timestamp for marking newly spawned letters as foreground after flush
   private pendingForeground = 0
 
   /** Queue a letter to spawn. Safe to call from any context. */
@@ -647,6 +712,7 @@ export class Game {
       const letter = createLetterBody(this.RAPIER, this.world, glyph, s.x / SCALE, s.y / SCALE)
       if (letter) {
         this.letters.push(letter)
+        this.renderer.createSprite(letter)
         if (markForeground) {
           this.foregroundLetters.set(letter, this.pendingForeground)
         }
@@ -656,14 +722,13 @@ export class Game {
     this.pendingForeground = 0
   }
 
-  // ── Basin overflow ──
+  // -- Basin overflow --
 
   updateOverflow(dt: number) {
     const count = this.letters.length
     const max = this.getBasinCapacity()
 
     if (this.isDraining) {
-      // Wait until all letters are gone, then restore
       if (count === 0) {
         this.isDraining = false
         this.overflowCountdown = 0
@@ -678,15 +743,12 @@ export class Game {
       }
       this.overflowCountdown -= dt
       if (this.overflowCountdown <= 0) {
-        // Drain!
         this.isDraining = true
         this.overflowCountdown = 0
         this.removeFloor()
-        // Also dump shelf letters
         this.dumpShelfLetters()
       }
     } else {
-      // Back under capacity — reset countdown
       this.overflowCountdown = 0
     }
   }
@@ -699,22 +761,23 @@ export class Game {
       if (pos.y > killY) {
         this.world.removeRigidBody(letter.body)
         this.foregroundLetters.delete(letter)
+        this.renderer.removeSprite(letter)
         this.letters.splice(i, 1)
       }
     }
   }
 
-  renderOverflowVignette(ctx: CanvasRenderingContext2D) {
+  renderOverflowVignette() {
     const count = this.letters.length
     const max = this.getBasinCapacity()
     const warnAt = Math.floor(max * BASIN.warnRatio)
 
+    this.vignetteGfx.clear()
+
     if (count < warnAt && !this.isDraining) return
 
-    // Intensity ramps from 0 at warnAt to 1 at max, stays 1 past max
     let intensity = Math.min(1, (count - warnAt) / (max - warnAt))
 
-    // Pulsate when countdown is active
     if (this.overflowCountdown > 0) {
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 150)
       intensity = Math.max(intensity, 0.6 + 0.4 * pulse)
@@ -726,47 +789,39 @@ export class Game {
 
     const alpha = intensity * 0.35
     const spread = 60 + intensity * 80
-
-    ctx.save()
+    const r = 192
+    const g = 57
+    const b = 43
+    const color = (r << 16) | (g << 8) | b
 
     // Top edge
-    const topGrad = ctx.createLinearGradient(0, 0, 0, spread)
-    topGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
-    topGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = topGrad
-    ctx.fillRect(0, 0, this.width, spread)
+    this.vignetteGfx.rect(0, 0, this.width, spread)
+    this.vignetteGfx.fill({ color, alpha })
 
     // Bottom edge
-    const botGrad = ctx.createLinearGradient(0, this.height, 0, this.height - spread)
-    botGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
-    botGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = botGrad
-    ctx.fillRect(0, this.height - spread, this.width, spread)
+    this.vignetteGfx.rect(0, this.height - spread, this.width, spread)
+    this.vignetteGfx.fill({ color, alpha })
 
     // Left edge
-    const leftGrad = ctx.createLinearGradient(0, 0, spread, 0)
-    leftGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
-    leftGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = leftGrad
-    ctx.fillRect(0, 0, spread, this.height)
+    this.vignetteGfx.rect(0, 0, spread, this.height)
+    this.vignetteGfx.fill({ color, alpha: alpha * 0.6 })
 
     // Right edge
-    const rightGrad = ctx.createLinearGradient(this.width, 0, this.width - spread, 0)
-    rightGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
-    rightGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = rightGrad
-    ctx.fillRect(this.width - spread, 0, spread, this.height)
-
-    ctx.restore()
+    this.vignetteGfx.rect(this.width - spread, 0, spread, this.height)
+    this.vignetteGfx.fill({ color, alpha: alpha * 0.6 })
   }
 
-  renderOverflowHUD(ctx: CanvasRenderingContext2D) {
+  renderOverflowHUD() {
     const count = this.letters.length
     const max = this.getBasinCapacity()
     const warnAt = Math.floor(max * BASIN.warnRatio)
 
-    if (count < warnAt && !this.isDraining) return
+    if (count < warnAt && !this.isDraining) {
+      this.overflowContainer.visible = false
+      return
+    }
 
+    this.overflowContainer.visible = true
     const isOver = count > max
     const hasMessage = this.overflowCountdown > 0 || this.isDraining
     const boxWidth = 240
@@ -775,16 +830,15 @@ export class Game {
     const shelfTop = this.shelf.rect.y
     const by = shelfTop - boxHeight - 12
 
-    // Container
-    ctx.fillStyle = COLORS.bg
-    ctx.beginPath()
-    ctx.roundRect(bx, by, boxWidth, boxHeight, 8)
-    ctx.fill()
-    ctx.strokeStyle = isOver ? COLORS.error : COLORS.shelf
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.roundRect(bx, by, boxWidth, boxHeight, 8)
-    ctx.stroke()
+    // Container background
+    this.overflowBg.clear()
+    this.overflowBg.roundRect(bx, by, boxWidth, boxHeight, 8)
+    this.overflowBg.fill(COLORS.bg)
+    this.overflowBg.roundRect(bx, by, boxWidth, boxHeight, 8)
+    this.overflowBg.stroke({
+      color: isOver ? COLORS.error : COLORS.shelf,
+      width: 2,
+    })
 
     // Capacity bar
     const barPad = 16
@@ -793,40 +847,33 @@ export class Game {
     const barX = bx + barPad
     const barY = by + boxHeight - barHeight - 10
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)'
-    ctx.beginPath()
-    ctx.roundRect(barX, barY, barWidth, barHeight, 4)
-    ctx.fill()
+    this.overflowBarBg.clear()
+    this.overflowBarBg.roundRect(barX, barY, barWidth, barHeight, 4)
+    this.overflowBarBg.fill({ color: 0x000000, alpha: 0.08 })
 
     const ratio = Math.min(1, count / max)
-    ctx.fillStyle = isOver ? COLORS.error : COLORS.valid
-    ctx.beginPath()
-    ctx.roundRect(barX, barY, barWidth * ratio, barHeight, 4)
-    ctx.fill()
+    this.overflowBarFill.clear()
+    this.overflowBarFill.roundRect(barX, barY, barWidth * ratio, barHeight, 4)
+    this.overflowBarFill.fill(isOver ? COLORS.error : COLORS.valid)
 
-    ctx.fillStyle = COLORS.ink
-    ctx.font = `bold 11px ${FONT_FAMILY}`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(`${count} / ${max}`, barX + barWidth / 2, barY + barHeight / 2)
+    this.overflowBarText.text = `${count} / ${max}`
+    this.overflowBarText.position.set(barX + barWidth / 2, barY + barHeight / 2)
 
     // Warning / countdown message
     if (this.overflowCountdown > 0) {
-      ctx.fillStyle = COLORS.error
-      ctx.font = `bold 18px ${FONT_FAMILY}`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'alphabetic'
-      ctx.fillText(`OVERFLOW IN ${Math.ceil(this.overflowCountdown)}`, bx + boxWidth / 2, barY - 8)
+      this.overflowMessageText.visible = true
+      this.overflowMessageText.text = `OVERFLOW IN ${Math.ceil(this.overflowCountdown)}`
+      this.overflowMessageText.position.set(bx + boxWidth / 2, barY - 8)
     } else if (this.isDraining) {
-      ctx.fillStyle = COLORS.error
-      ctx.font = `bold 18px ${FONT_FAMILY}`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'alphabetic'
-      ctx.fillText('DRAINING...', bx + boxWidth / 2, barY - 8)
+      this.overflowMessageText.visible = true
+      this.overflowMessageText.text = 'DRAINING...'
+      this.overflowMessageText.position.set(bx + boxWidth / 2, barY - 8)
+    } else {
+      this.overflowMessageText.visible = false
     }
   }
 
-  // ── Game loop ──
+  // -- Game loop --
 
   lastTime = 0
   accumulator = 0
@@ -863,22 +910,16 @@ export class Game {
     if (steps >= MAX_SUBSTEPS) this.accumulator = 0
 
     this.render()
+    this.app.renderer.render(this.app.stage)
     requestAnimationFrame(this.loop)
   }
 
   render() {
-    const ctx = this.ctx
-    ctx.clearRect(0, 0, this.width, this.height)
+    this.mining.render(this.width)
 
-    ctx.fillStyle = COLORS.bg
-    ctx.fillRect(0, 0, this.width, this.height)
+    // Overflow vignette
+    this.renderOverflowVignette()
 
-    this.mining.render(ctx, this.width)
-
-    // Overflow vignette (behind letters, on top of background)
-    this.renderOverflowVignette(ctx)
-
-    const dpr = window.devicePixelRatio
     const dragging = this.drag.getDragging()
     const hovered = this.drag.getHovered()
     const now = performance.now()
@@ -904,41 +945,35 @@ export class Game {
     const vowels = 'aeiouAEIOU'
     const getGlow = (letter: LetterBody): string | null => {
       const lc = letter.char.toLowerCase()
-      if (compassChars?.has(lc)) return '#4A7C59' // green — discovery path
-      if (ghostChars?.has(lc)) return '#6B4423' // burnt sienna — any completion
+      if (compassChars?.has(lc)) return '#4A7C59'
+      if (ghostChars?.has(lc)) return '#6B4423'
       if (vowelBloom && vowels.includes(letter.char)) return '#8B7355'
       return null
     }
 
-    // Basin letters (behind shelf)
+    // Update all letter sprites and assign them to the correct layer
     for (const letter of this.letters) {
-      if (letter === dragging) continue
-      if (this.foregroundLetters.has(letter)) continue
-      this.renderer.renderLetter(ctx, letter, dpr, letter === hovered, getGlow(letter))
-    }
+      const isForeground = this.foregroundLetters.has(letter)
+      const isDrag = letter === dragging
 
-    // Shelf (foreground)
-    this.shelf.render(ctx)
-
-    // Foreground letters (just released / cleared from shelf)
-    for (const [letter] of this.foregroundLetters) {
-      if (letter === dragging) continue
-      if (!this.letters.includes(letter)) {
-        this.foregroundLetters.delete(letter)
-        continue
+      if (isDrag) {
+        this.renderer.moveToLayer(letter, this.renderer.dragLayer)
+      } else if (isForeground) {
+        this.renderer.moveToLayer(letter, this.renderer.foregroundLayer)
+      } else {
+        this.renderer.moveToLayer(letter, this.renderer.basinLayer)
       }
-      this.renderer.renderLetter(ctx, letter, dpr, letter === hovered, getGlow(letter))
+
+      this.renderer.updateSprite(letter, letter === hovered, getGlow(letter))
     }
 
-    // Dragged letter (topmost)
-    if (dragging) {
-      this.renderer.renderLetter(ctx, dragging, dpr)
-    }
+    // Shelf
+    this.shelf.render()
 
-    // Overflow HUD (on top of everything)
-    this.renderOverflowHUD(ctx)
+    // Overflow HUD
+    this.renderOverflowHUD()
 
-    // Economy HUD (topmost layer)
-    this.hud.render(ctx, this.width, this.height)
+    // Economy HUD
+    this.hud.render(this.width, this.height)
   }
 }
