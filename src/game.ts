@@ -130,9 +130,6 @@ export class Game {
       this.shelf.submittedWords = saved.submittedWords
     }
 
-    // Apply all upgrade side effects (sets shelf width, ink multiplier, etc.)
-    this.applyAllUpgrades()
-
     // Shop
     this.shop = new Shop({
       getInk: () => this.economy.ink,
@@ -219,8 +216,11 @@ export class Game {
       },
     })
 
-    // Auto-miner (rate set by applyAllUpgrades)
+    // Auto-miner
     this.autoMiner = new AutoMiner(this.mining)
+
+    // Apply all upgrade side effects now that all systems are initialized
+    this.applyAllUpgrades()
 
     // Drag controller
     this.drag = new DragController(
