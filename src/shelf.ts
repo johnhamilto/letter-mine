@@ -163,42 +163,53 @@ export class Shelf {
     return this.letters.map((l) => l.char).join('')
   }
 
-  /** Returns lowercase chars that would extend the current shelf word into a valid word or prefix. */
-  getCompletionChars(): Set<string> {
+  /**
+   * Returns lowercase chars that lead to a completable dictionary word within maxSlots,
+   * given the letter counts available in the basin.
+   *
+   * Uses DFS with pruning on the prefix set and basin availability. Caller is responsible
+   * for caching the result — each call runs up to 26 bounded DFS queries.
+   */
+  getCompletionChars(basinCounts: Map<string, number>): Set<string> {
     const result = new Set<string>()
     if (this.letters.length < 3 || !this.dictionary || !this.prefixes) return result
-    const current = this.currentWord()
+
+    const prefix = this.currentWord()
+    const counts = new Map(basinCounts)
+
     for (let c = 97; c <= 122; c++) {
       const ch = String.fromCharCode(c)
-      const extended = current + ch
-      if (this.dictionary.has(extended) || this.prefixes.has(extended)) {
+      if ((counts.get(ch) ?? 0) === 0) continue
+
+      const next = prefix + ch
+      if (!this.prefixes.has(next) && !this.dictionary.has(next)) continue
+
+      counts.set(ch, counts.get(ch)! - 1)
+      if (this.canReachWord(next, this.maxSlots, counts)) {
         result.add(ch)
       }
+      counts.set(ch, counts.get(ch)! + 1)
     }
     return result
   }
 
-  /** Like getCompletionChars but only considers paths leading to undiscovered words. */
-  getCompassChars(discovered: Set<string>): {
-    available: Set<string>
-    missingChars: Set<string>
-  } {
-    const available = new Set<string>()
-    const allValid = new Set<string>()
-    if (this.letters.length < 3 || !this.dictionary || !this.prefixes) {
-      return { available, missingChars: new Set() }
-    }
-    const current = this.currentWord()
+  private canReachWord(prefix: string, maxLen: number, counts: Map<string, number>): boolean {
+    if (prefix.length >= 4 && this.dictionary!.has(prefix)) return true
+    if (prefix.length >= maxLen) return false
+
     for (let c = 97; c <= 122; c++) {
       const ch = String.fromCharCode(c)
-      const extended = current + ch
-      const isWord = this.dictionary.has(extended) && !discovered.has(extended)
-      const isPrefix = this.prefixes.has(extended)
-      if (isWord || isPrefix) {
-        allValid.add(ch)
-      }
+      if ((counts.get(ch) ?? 0) === 0) continue
+
+      const next = prefix + ch
+      if (!this.prefixes!.has(next) && !this.dictionary!.has(next)) continue
+
+      counts.set(ch, counts.get(ch)! - 1)
+      const found = this.canReachWord(next, maxLen, counts)
+      counts.set(ch, counts.get(ch)! + 1)
+      if (found) return true
     }
-    return { available: allValid, missingChars: new Set() }
+    return false
   }
 
   private validate() {

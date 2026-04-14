@@ -1,4 +1,4 @@
-/** Economy — scoring, ink tracking, discovered words, streaks. */
+/** Economy — scoring, ink tracking, discovered words. */
 
 import { SCORING } from './constants'
 import type { GameState } from './state'
@@ -9,7 +9,6 @@ export class Economy {
   totalInkEarned = 0
   discoveredWords = new Set<string>()
   discoveredRoots = new Set<string>()
-  streak = 0
 
   /** Ink multiplier bonus fraction (0 = none, 1.0 = +100%). Set by game from upgrade level. */
   inkMultiplierBonus = 0
@@ -21,7 +20,7 @@ export class Economy {
   scoreWord(word: string, letters: ShelfLetter[], entry: DictionaryEntry | undefined): ScoreResult {
     const normalized = word.toLowerCase()
     const length = normalized.length
-    const baseValue = Math.floor(Math.pow(length, 1.5))
+    const baseValue = Math.floor(Math.pow(length, 1.5) * SCORING.baseScoreMultiplier)
 
     const tier = entry?.tier ?? 0
     const tierMultiplier = SCORING.tierMultipliers[tier] ?? 1
@@ -48,16 +47,6 @@ export class Economy {
       })
     }
 
-    // Streak bonus
-    if (this.streak > 0) {
-      const streakMult =
-        1 + Math.min(this.streak * SCORING.streakBonusPerStep, SCORING.streakBonusCap)
-      bonuses.push({
-        label: `Streak x${this.streak + 1}`,
-        multiplier: streakMult,
-      })
-    }
-
     // Compute final value
     let finalInk = baseValue * tierMultiplier
     for (const b of bonuses) {
@@ -79,7 +68,6 @@ export class Economy {
     // Update state
     this.discoveredWords.add(normalized)
     this.discoveredRoots.add(root)
-    this.streak++
     this.ink += finalInk
     this.totalInkEarned += finalInk
 
@@ -98,10 +86,6 @@ export class Economy {
     this.lastScoreTime = performance.now()
 
     return result
-  }
-
-  resetStreak() {
-    this.streak = 0
   }
 
   letterMinedInk: number = SCORING.letterMinedInk
@@ -125,14 +109,13 @@ export class Economy {
   /** Snapshot economy fields into a partial state. Caller merges with upgrade/milestone data. */
   toPartialState(): Pick<
     GameState,
-    'ink' | 'totalInkEarned' | 'discoveredWords' | 'discoveredRoots' | 'streak'
+    'ink' | 'totalInkEarned' | 'discoveredWords' | 'discoveredRoots'
   > {
     return {
       ink: this.ink,
       totalInkEarned: this.totalInkEarned,
       discoveredWords: [...this.discoveredWords],
       discoveredRoots: [...this.discoveredRoots],
-      streak: this.streak,
     }
   }
 
@@ -141,6 +124,5 @@ export class Economy {
     this.totalInkEarned = state.totalInkEarned
     this.discoveredWords = new Set(state.discoveredWords)
     this.discoveredRoots = new Set(state.discoveredRoots)
-    this.streak = state.streak
   }
 }

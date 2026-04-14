@@ -179,6 +179,7 @@ export type UpgradeTrack =
   | 'basinCapacity'
   | 'shelfWidth'
   | 'apprenticeShelfWidth'
+  | 'apprenticeSpeed'
   | 'miningQuality'
   | 'autoMiner'
   | 'inkMultiplier'
@@ -186,11 +187,11 @@ export type UpgradeTrack =
 export type UniqueUpgrade =
   | 'wordCheck'
   | 'basinShake'
-  | 'vowelBloom'
+  | 'letterCount'
   | 'siphon'
   | 'wordGhost'
   | 'apprenticeShelf'
-  | 'wordCompass'
+  | 'subWordHarvest'
   | 'autoDiscovery'
 
 export type MilestoneName =

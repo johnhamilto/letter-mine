@@ -24,11 +24,13 @@ interface PromptLine {
 
 interface MiningOptions {
   onLetterMined: (char: string, screenX: number, screenY: number) => void
+  onKeystroke?: () => void
 }
 
 export class MiningPrompt {
   markov: MarkovGenerator | null = null
   private onLetterMined: MiningOptions['onLetterMined']
+  private onKeystroke: MiningOptions['onKeystroke']
 
   paused = false
 
@@ -51,6 +53,7 @@ export class MiningPrompt {
 
   constructor(options: MiningOptions) {
     this.onLetterMined = options.onLetterMined
+    this.onKeystroke = options.onKeystroke
 
     this.canvas = new OffscreenCanvas(1, 1)
     const ctx = this.canvas.getContext('2d')
@@ -129,6 +132,7 @@ export class MiningPrompt {
         pc.mined = true
         pc.mineTime = now
         this.cursorPos++
+        this.onKeystroke?.()
       }
       return
     }
@@ -143,8 +147,10 @@ export class MiningPrompt {
       }
 
       this.cursorPos++
+      this.onKeystroke?.()
     } else {
       pc.mistakeTime = now
+      this.onKeystroke?.()
     }
   }
 
@@ -160,6 +166,7 @@ export class MiningPrompt {
       pc.mined = true
       pc.mineTime = now
       this.cursorPos++
+      this.onKeystroke?.()
       return
     }
 
@@ -170,6 +177,7 @@ export class MiningPrompt {
       this.onLetterMined(pc.char, pos.x, pos.y)
     }
     this.cursorPos++
+    this.onKeystroke?.()
   }
 
   render(screenWidth: number) {

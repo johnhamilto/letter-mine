@@ -90,10 +90,9 @@ export const STARTING = {
 // ── Scoring ──
 export const SCORING = {
   tierMultipliers: [15, 6, 3, 1.5, 1] as const, // indexed by tier 0-4
+  baseScoreMultiplier: 1.5, // applied to baseValue (formerly the capped streak bonus)
   firstInFamilyBonus: 2,
   uppercaseOpenerBonus: 1.5,
-  streakBonusPerStep: 0.1,
-  streakBonusCap: 0.5,
   repeatWordPenalty: 0.1,
   letterMinedInk: 0.1,
   scoreFlashMs: 2000,

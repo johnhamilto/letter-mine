@@ -16,7 +16,6 @@ export interface DevPanelCallbacks {
     totalInk: number
     discovered: number
     letters: number
-    streak: number
   }
 }
 
@@ -67,7 +66,7 @@ export function createDevPanel(callbacks: DevPanelCallbacks): HTMLDivElement {
     const s = callbacks.getStats()
     statsEl.innerHTML = [
       `Ink: <b>${Math.floor(s.ink)}</b> (total: ${Math.floor(s.totalInk)})`,
-      `Words: <b>${s.discovered}</b> | Letters: <b>${s.letters}</b> | Streak: <b>${s.streak}</b>`,
+      `Words: <b>${s.discovered}</b> | Letters: <b>${s.letters}</b>`,
     ].join('<br>')
   }
   setInterval(updateStats, 500)

@@ -56,6 +56,7 @@ export class Game {
     basinCapacity: 0,
     shelfWidth: 0,
     apprenticeShelfWidth: 0,
+    apprenticeSpeed: 0,
     miningQuality: 0,
     autoMiner: 0,
     inkMultiplier: 0,
@@ -66,9 +67,15 @@ export class Game {
   dictionaryOpen = false
   private lastShopRefresh = 0
   private lastShakeTime = 0
+  private ghostCache: { word: string; maxSlots: number; chars: Set<string> } | null = null
+  private lastGhostRefresh = 0
   autoMiner: AutoMiner
   siphonMode = false
   apprenticeShelf: ApprenticeShelf | null = null
+
+  private censusEl: HTMLDivElement | null = null
+  private censusCountEls: Record<string, HTMLSpanElement> = {}
+  private censusItemEls: Record<string, HTMLSpanElement> = {}
 
   private spawnQueue: Array<{ char: string; x: number; y: number }> = []
   private lastOverflowTick = 0
@@ -93,6 +100,7 @@ export class Game {
   private overflowBarFill = new Graphics()
   private overflowBarText: Text
   private overflowMessageText: Text
+  private overflowTopY: number | null = null
 
   constructor(app: Application, physics: PhysicsProxy, glyphs: Record<string, GlyphData>) {
     this.app = app
@@ -112,7 +120,8 @@ export class Game {
     const saved = loadState()
     if (saved) {
       this.economy.fromState(saved)
-      this.upgradeLevels = { ...saved.upgradeLevels }
+      // Merge saved levels over defaults so new tracks get level 0 instead of undefined
+      this.upgradeLevels = { ...this.upgradeLevels, ...saved.upgradeLevels }
       this.unlockedUniques = new Set(saved.unlockedUniques)
       this.highestMilestone = saved.highestMilestone
     }
@@ -214,7 +223,6 @@ export class Game {
         onClearDiscoveries: () => {
           this.economy.discoveredWords.clear()
           this.economy.discoveredRoots.clear()
-          this.economy.streak = 0
         },
         onResetState: () => {
           localStorage.removeItem('letter-mine-save')
@@ -228,7 +236,6 @@ export class Game {
           totalInk: this.economy.totalInkEarned,
           discovered: this.economy.discoveredWords.size,
           letters: this.letters.length,
-          streak: this.economy.streak,
         }),
       })
     }
@@ -238,6 +245,9 @@ export class Game {
       onLetterMined: (char, screenX, screenY) => {
         this.spawnLetter(char, screenX, screenY)
         this.economy.creditLetterMined()
+        this.pulseCensus(char)
+      },
+      onKeystroke: () => {
         this.sound.playKeyClick()
       },
     })
@@ -252,6 +262,8 @@ export class Game {
       const y = -30 - Math.random() * 40
       this.spawnLetter(char, x, y)
       this.economy.creditLetterMined()
+      this.sound.playKeyClick()
+      this.pulseCensus(char)
     })
 
     this.autoMiner.shouldPause = () => this.getLetterCount() >= this.getBasinCapacity() * 0.9
@@ -271,7 +283,7 @@ export class Game {
         this.letterMap.delete(letter.id)
         this.foregroundLetters.delete(letter)
         this.renderer.removeSprite(letter)
-        this.sound.playShelfSnap()
+        this.sound.playKeyClick()
       },
       (char, screenX, screenY) => {
         const glyph = this.glyphs[char]
@@ -316,6 +328,7 @@ export class Game {
       if (this.siphonMode && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
         this.siphonLetter(e.key)
+        this.sound.playKeyClick()
         return
       }
 
@@ -350,6 +363,9 @@ export class Game {
     stage.addChild(this.renderer.dragLayer)
     stage.addChild(this.overflowHudContainer)
     stage.addChild(this.hudLayer)
+    if (this.apprenticeShelf) {
+      stage.addChild(this.apprenticeShelf.container)
+    }
   }
 
   resize() {
@@ -359,6 +375,76 @@ export class Game {
 
     this.physics.rebuildWalls(this.width, this.height, this.isDraining)
     this.shelf.rebuild(this.width, this.height)
+    this.apprenticeShelf?.resize(this.width)
+    this.positionCensus()
+  }
+
+  private ensureCensusEl() {
+    if (this.censusEl) return
+    const el = document.createElement('div')
+    el.className = 'letter-census'
+    const chars = 'abcdefghijklmnopqrstuvwxyz'
+    for (const c of chars) {
+      const item = document.createElement('span')
+      item.className = 'lc-item'
+      const letter = document.createElement('span')
+      letter.className = 'lc-letter'
+      letter.textContent = c
+      const count = document.createElement('span')
+      count.className = 'lc-count'
+      count.textContent = '0'
+      item.appendChild(letter)
+      item.appendChild(count)
+      el.appendChild(item)
+      this.censusItemEls[c] = item
+      this.censusCountEls[c] = count
+    }
+    document.body.appendChild(el)
+    this.censusEl = el
+    this.positionCensus()
+  }
+
+  private positionCensus() {
+    if (!this.censusEl) return
+    const shelfBottom = this.shelf.y + this.shelf.shelfHeight
+    this.censusEl.style.top = `${shelfBottom + 14}px`
+  }
+
+  /** Trigger the pulse animation for a given letter's census cell. */
+  pulseCensus(char: string) {
+    if (!this.unlockedUniques.has('letterCount')) return
+    const item = this.censusItemEls[char.toLowerCase()]
+    if (!item) return
+    // Restart the animation by removing and re-adding the class on next frame
+    item.classList.remove('lc-pulse')
+    // Force reflow so the animation can restart
+    void item.offsetWidth
+    item.classList.add('lc-pulse')
+  }
+
+  private renderCensus() {
+    if (!this.unlockedUniques.has('letterCount')) {
+      if (this.censusEl) this.censusEl.style.display = 'none'
+      return
+    }
+
+    this.ensureCensusEl()
+    this.censusEl!.style.display = ''
+
+    const counts = new Map<string, number>()
+    for (const letter of this.letters) {
+      const lc = letter.char.toLowerCase()
+      counts.set(lc, (counts.get(lc) ?? 0) + 1)
+    }
+
+    const chars = 'abcdefghijklmnopqrstuvwxyz'
+    for (const c of chars) {
+      const n = counts.get(c) ?? 0
+      const item = this.censusItemEls[c]!
+      const countEl = this.censusCountEls[c]!
+      if (countEl.textContent !== String(n)) countEl.textContent = String(n)
+      item.classList.toggle('lc-zero', n === 0)
+    }
   }
 
   removeFloor() {
@@ -517,11 +603,15 @@ export class Game {
             'apprenticeShelfWidth',
             this.upgradeLevels.apprenticeShelfWidth,
           )
+          this.apprenticeShelf.assemblyMs =
+            getUpgradeValue('apprenticeSpeed', this.upgradeLevels.apprenticeSpeed) * 1000
+          this.apprenticeShelf.resize(this.width)
+          this.rebuildSceneGraph()
         }
         break
       case 'autoDiscovery':
         if (this.apprenticeShelf) {
-          this.apprenticeShelf.canDiscover = true
+          this.apprenticeShelf.preferHighValue = true
         }
         break
     }
@@ -549,23 +639,41 @@ export class Game {
           this.apprenticeShelf.maxLength = value
         }
         break
+      case 'apprenticeSpeed':
+        if (this.apprenticeShelf) {
+          this.apprenticeShelf.assemblyMs = value * 1000
+        }
+        break
     }
   }
 
   siphonLetter(key: string) {
     const shelfY = this.shelf.y / SCALE
-    let best: LetterBody | null = null
-    let bestDist = Infinity
+    const preferUpper = this.shelf.letters.length === 0
+    const lowerKey = key.toLowerCase()
+    let bestPreferred: LetterBody | null = null
+    let bestPreferredDist = Infinity
+    let bestFallback: LetterBody | null = null
+    let bestFallbackDist = Infinity
 
     for (const letter of this.letters) {
-      if (letter.char.toLowerCase() !== key.toLowerCase()) continue
+      if (letter.char.toLowerCase() !== lowerKey) continue
       const dist = Math.abs(letter.y - shelfY)
-      if (dist < bestDist) {
-        bestDist = dist
-        best = letter
+      const matchesPreferred = letter.isUpper === preferUpper
+      if (matchesPreferred) {
+        if (dist < bestPreferredDist) {
+          bestPreferredDist = dist
+          bestPreferred = letter
+        }
+      } else {
+        if (dist < bestFallbackDist) {
+          bestFallbackDist = dist
+          bestFallback = letter
+        }
       }
     }
 
+    const best = bestPreferred ?? bestFallback
     if (!best) return
 
     const placed = this.shelf.placeLetter(best.char, best.isUpper)
@@ -616,13 +724,31 @@ export class Game {
         `Submitted: ${result.word} -> +${score.finalInk} Ink`,
         score.bonuses.map((b) => b.label).join(', '),
       )
+      if (this.unlockedUniques.has('subWordHarvest')) {
+        this.harvestSubWords(normalized)
+      }
       this.checkMilestones()
       this.renderShopUI()
       this.sound.playStamp()
     } else {
-      this.economy.resetStreak()
       this.dumpShelfLetters(result.letters)
       this.sound.playError()
+    }
+  }
+
+  /** Score every dictionary word that appears as a contiguous substring (length >= 4). */
+  private harvestSubWords(word: string) {
+    const seen = new Set<string>([word])
+    for (let start = 0; start < word.length; start++) {
+      for (let end = start + 4; end <= word.length; end++) {
+        const sub = word.substring(start, end)
+        if (seen.has(sub)) continue
+        seen.add(sub)
+        const entry = this.dictionary[sub]
+        if (entry) {
+          this.economy.scoreWord(sub, [], entry)
+        }
+      }
     }
   }
 
@@ -677,6 +803,29 @@ export class Game {
 
   getLetterCount(): number {
     return this.letters.length + this.shelf.letters.length
+  }
+
+  /** Memoized word-ghost char lookup. Invalidates on shelf change; throttles on basin change. */
+  private getGhostChars(): Set<string> {
+    const now = performance.now()
+    const word = this.shelf.currentWord()
+    const maxSlots = this.shelf.maxSlots
+    const sameShelf =
+      this.ghostCache !== null &&
+      this.ghostCache.word === word &&
+      this.ghostCache.maxSlots === maxSlots
+    if (sameShelf && now - this.lastGhostRefresh < 250) {
+      return this.ghostCache!.chars
+    }
+    const basinCounts = new Map<string, number>()
+    for (const letter of this.letters) {
+      const c = letter.char.toLowerCase()
+      basinCounts.set(c, (basinCounts.get(c) ?? 0) + 1)
+    }
+    const chars = this.shelf.getCompletionChars(basinCounts)
+    this.ghostCache = { word, maxSlots, chars }
+    this.lastGhostRefresh = now
+    return chars
   }
 
   updateOverflow(dt: number) {
@@ -831,6 +980,7 @@ export class Game {
 
     if (count < warnAt && !this.isDraining) {
       this.overflowContainer.visible = false
+      this.overflowTopY = null
       return
     }
 
@@ -842,6 +992,7 @@ export class Game {
     const bx = (this.width - boxWidth) / 2
     const shelfTop = this.shelf.rect.y
     const by = shelfTop - boxHeight - 12
+    this.overflowTopY = by
 
     // Container background
     this.overflowBg.clear()
@@ -963,6 +1114,9 @@ export class Game {
     // Overflow vignette
     this.renderOverflowVignette()
 
+    // Letter census (DOM, only when upgrade unlocked)
+    this.renderCensus()
+
     const dragging = this.drag.getDragging()
     const hovered = this.drag.getHovered()
     const now = performance.now()
@@ -971,23 +1125,11 @@ export class Game {
       if (now - time > FOREGROUND_MS) this.foregroundLetters.delete(letter)
     }
 
-    const compassChars = this.unlockedUniques.has('wordCompass')
-      ? this.shelf.getCompassChars(this.economy.discoveredWords).available
-      : null
+    const ghostChars = this.unlockedUniques.has('wordGhost') ? this.getGhostChars() : null
 
-    const ghostChars =
-      this.unlockedUniques.has('wordGhost') && !compassChars
-        ? this.shelf.getCompletionChars()
-        : null
-
-    const hasGhost = this.unlockedUniques.has('wordGhost')
-    const vowelBloom = this.unlockedUniques.has('vowelBloom') && !hasGhost
-    const vowels = 'aeiouAEIOU'
     const getGlow = (letter: LetterBody): string | null => {
       const lc = letter.char.toLowerCase()
-      if (compassChars?.has(lc)) return '#4A7C59'
       if (ghostChars?.has(lc)) return '#2E8B7D'
-      if (vowelBloom && vowels.includes(letter.char)) return '#B8860B'
       return null
     }
 
@@ -1015,5 +1157,10 @@ export class Game {
 
     // Economy HUD
     this.hud.render(this.width, this.height)
+
+    // Apprentice assembly bench — stacks above the overflow HUD if it's showing
+    const apprenticeAnchor =
+      this.overflowTopY !== null ? this.overflowTopY - 8 : this.shelf.rect.y - 12
+    this.apprenticeShelf?.render(apprenticeAnchor)
   }
 }

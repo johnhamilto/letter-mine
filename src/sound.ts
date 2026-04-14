@@ -4,7 +4,7 @@
  * Fire-and-forget playback -- never blocks the game loop.
  */
 
-const KEY_VARIANTS = 5
+const KEY_VARIANTS = 3
 
 export class SoundManager {
   private ctx: AudioContext | null = null
@@ -86,10 +86,6 @@ export class SoundManager {
     this.playRandom('key', KEY_VARIANTS, { volume: 0.4, pitchVariation: 0.08 })
   }
 
-  playShelfSnap(): void {
-    this.play('shelf-snap', { volume: 0.5 })
-  }
-
   playStamp(): void {
     this.play('stamp', { volume: 0.7 })
   }
@@ -107,7 +103,6 @@ export class SoundManager {
     for (let i = 1; i <= KEY_VARIANTS; i++) {
       loads.push(this.load(`key${i}`, `${base}sounds/key${i}.mp3`))
     }
-    loads.push(this.load('shelf-snap', `${base}sounds/shelf-snap.mp3`))
     loads.push(this.load('stamp', `${base}sounds/stamp.mp3`))
     loads.push(this.load('error', `${base}sounds/error.mp3`))
     loads.push(this.load('tick', `${base}sounds/tick.mp3`))

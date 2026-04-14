@@ -1,6 +1,7 @@
 /** Game state persistence — save/load to localStorage. */
 
 import type { MilestoneName, UniqueUpgrade, UpgradeTrack } from './types'
+import { MILESTONES, UNIQUE_UPGRADES } from './upgrades'
 
 const STORAGE_KEY = 'letter-mine-save'
 const SAVE_INTERVAL_MS = 30_000
@@ -10,7 +11,6 @@ export interface GameState {
   totalInkEarned: number
   discoveredWords: string[]
   discoveredRoots: string[]
-  streak: number
   upgradeLevels: Record<UpgradeTrack, number>
   unlockedUniques: UniqueUpgrade[]
   highestMilestone: MilestoneName | null
@@ -20,6 +20,7 @@ const DEFAULT_UPGRADE_LEVELS: Record<UpgradeTrack, number> = {
   basinCapacity: 0,
   shelfWidth: 0,
   apprenticeShelfWidth: 0,
+  apprenticeSpeed: 0,
   miningQuality: 0,
   autoMiner: 0,
   inkMultiplier: 0,
@@ -31,63 +32,76 @@ export function defaultState(): GameState {
     totalInkEarned: 0,
     discoveredWords: [],
     discoveredRoots: [],
-    streak: 0,
     upgradeLevels: { ...DEFAULT_UPGRADE_LEVELS },
     unlockedUniques: [],
     highestMilestone: null,
   }
 }
 
+const VALID_UNIQUES = new Set<string>(UNIQUE_UPGRADES.map((u) => u.id))
+const VALID_MILESTONES = new Set<string>(MILESTONES.map((m) => m.name))
+
+function asStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  return v.filter((x): x is string => typeof x === 'string')
+}
+
+function asNumber(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback
+}
+
+/**
+ * Load saved state. Permissive: unknown fields are dropped, bad values fall back
+ * to defaults, and partial corruption never crashes the game or discards the save.
+ */
 export function loadState(): GameState | null {
+  let raw: string | null
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return null
-    const parsed: unknown = JSON.parse(raw)
-    if (typeof parsed !== 'object' || parsed === null) return null
-    const obj = parsed as Record<string, unknown>
-    if (typeof obj.ink !== 'number') return null
-    if (!Array.isArray(obj.discoveredWords)) return null
-
-    // Merge saved upgrade levels with defaults (handles new tracks added later)
-    const savedLevels =
-      typeof obj.upgradeLevels === 'object' && obj.upgradeLevels !== null
-        ? (obj.upgradeLevels as Record<string, number>)
-        : {}
-    const upgradeLevels = { ...DEFAULT_UPGRADE_LEVELS }
-    for (const key of Object.keys(DEFAULT_UPGRADE_LEVELS) as UpgradeTrack[]) {
-      if (typeof savedLevels[key] === 'number') {
-        upgradeLevels[key] = savedLevels[key]
-      }
-    }
-
-    // Migration: miningQuality was repurposed from "min tier" to "rare letter chance".
-    // Old saves may have levels that map to unintended substitution rates. Reset to 0
-    // and refund the ink spent (costs were [1500, 6000, 20000, 80000]).
-    let ink = obj.ink as number
-    let totalInkEarned = typeof obj.totalInkEarned === 'number' ? obj.totalInkEarned : 0
-    if (upgradeLevels.miningQuality > 0) {
-      const refundTable = [0, 1500, 7500, 27500, 107500] as const
-      const refund = refundTable[Math.min(upgradeLevels.miningQuality, 4)] ?? 0
-      upgradeLevels.miningQuality = 0
-      ink += refund
-      totalInkEarned += refund
-    }
-
-    return {
-      ink,
-      totalInkEarned,
-      discoveredWords: obj.discoveredWords as string[],
-      discoveredRoots: Array.isArray(obj.discoveredRoots) ? (obj.discoveredRoots as string[]) : [],
-      streak: typeof obj.streak === 'number' ? obj.streak : 0,
-      upgradeLevels,
-      unlockedUniques: Array.isArray(obj.unlockedUniques)
-        ? (obj.unlockedUniques as UniqueUpgrade[])
-        : [],
-      highestMilestone:
-        typeof obj.highestMilestone === 'string' ? (obj.highestMilestone as MilestoneName) : null,
-    }
+    raw = localStorage.getItem(STORAGE_KEY)
   } catch {
     return null
+  }
+  if (!raw) return null
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const obj = parsed as Record<string, unknown>
+
+  // Upgrade levels: only keep tracks we recognize, ignore the rest.
+  const upgradeLevels = { ...DEFAULT_UPGRADE_LEVELS }
+  const savedLevels =
+    typeof obj.upgradeLevels === 'object' && obj.upgradeLevels !== null
+      ? (obj.upgradeLevels as Record<string, unknown>)
+      : {}
+  for (const key of Object.keys(DEFAULT_UPGRADE_LEVELS) as UpgradeTrack[]) {
+    const v = savedLevels[key]
+    if (typeof v === 'number' && Number.isFinite(v)) upgradeLevels[key] = v
+  }
+
+  // Uniques: drop any IDs no longer in the game.
+  const unlockedUniques = asStringArray(obj.unlockedUniques).filter((id) =>
+    VALID_UNIQUES.has(id),
+  ) as UniqueUpgrade[]
+
+  // Milestone: only accept a known name, otherwise null.
+  const highestMilestone =
+    typeof obj.highestMilestone === 'string' && VALID_MILESTONES.has(obj.highestMilestone)
+      ? (obj.highestMilestone as MilestoneName)
+      : null
+
+  return {
+    ink: asNumber(obj.ink, 0),
+    totalInkEarned: asNumber(obj.totalInkEarned, 0),
+    discoveredWords: asStringArray(obj.discoveredWords),
+    discoveredRoots: asStringArray(obj.discoveredRoots),
+    upgradeLevels,
+    unlockedUniques,
+    highestMilestone,
   }
 }
 

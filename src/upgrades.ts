@@ -62,6 +62,14 @@ export const TIERED_UPGRADES: readonly TieredUpgradeDef[] = [
     costs: [3000, 6000, 12000, 25000, 50000, 100000, 200000, 400000, 800000, 1500000],
     requiredMilestone: 'lexicographer',
   },
+  {
+    track: 'apprenticeSpeed',
+    name: 'Apprentice Speed',
+    description: 'Seconds to assemble one word',
+    values: [8, 6, 4.5, 3, 2, 1.25], // seconds per word
+    costs: [4000, 10000, 25000, 60000, 150000],
+    requiredMilestone: 'lexicographer',
+  },
 ] as const
 
 // ── Unique upgrades ──
@@ -83,9 +91,9 @@ export const UNIQUE_UPGRADES: readonly UniqueUpgradeDef[] = [
     requiredMilestone: 'apprentice',
   },
   {
-    id: 'vowelBloom',
-    name: 'Vowel Bloom',
-    description: 'Vowels glow in the basin',
+    id: 'letterCount',
+    name: 'Letter Census',
+    description: 'Shows how many of each letter are in the basin',
     cost: 3000,
     requiredMilestone: 'journeyman',
   },
@@ -106,28 +114,28 @@ export const UNIQUE_UPGRADES: readonly UniqueUpgradeDef[] = [
   {
     id: 'wordGhost',
     name: 'Word Ghost',
-    description: 'Basin letters that complete your word pulse',
+    description: 'Basin letters that can extend your shelf into a word glow',
     cost: 15000,
     requiredMilestone: 'wordsmith',
   },
   {
     id: 'apprenticeShelf',
     name: 'Apprentice Shelf',
-    description: 'Auto-assembles discovered words from the basin',
-    cost: 50000,
+    description: 'Auto-assembles low-value undiscovered words from the basin',
+    cost: 15000,
     requiredMilestone: 'lexicographer',
   },
   {
-    id: 'wordCompass',
-    name: 'Word Compass',
-    description: 'Highlights next letters for undiscovered words',
-    cost: 80000,
+    id: 'subWordHarvest',
+    name: 'Sub-Word Harvest',
+    description: 'Submitting a word also scores every dictionary word contained within it',
+    cost: 20000,
     requiredMilestone: 'lexicographer',
   },
   {
     id: 'autoDiscovery',
-    name: 'Auto-Discovery',
-    description: 'Apprentice shelf discovers new words on its own',
+    name: 'Apprentice Specialist',
+    description: 'Apprentice targets the highest-value undiscovered words',
     cost: 200000,
     requiredMilestone: 'publisher',
   },
