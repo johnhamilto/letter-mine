@@ -6,6 +6,19 @@ import { MILESTONES, UNIQUE_UPGRADES } from './upgrades'
 const STORAGE_KEY = 'letter-mine-save'
 const SAVE_INTERVAL_MS = 30_000
 
+export interface Settings {
+  /** Auto-miner pauses when basin is >= this fraction of capacity. 1.0 = never pause. */
+  autoMinerCapPercent: number
+  perfMonitorEnabled: boolean
+  muted: boolean
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  autoMinerCapPercent: 0.9,
+  perfMonitorEnabled: false,
+  muted: false,
+}
+
 export interface GameState {
   ink: number
   totalInkEarned: number
@@ -14,6 +27,7 @@ export interface GameState {
   upgradeLevels: Record<UpgradeTrack, number>
   unlockedUniques: UniqueUpgrade[]
   highestMilestone: MilestoneName | null
+  settings: Settings
 }
 
 const DEFAULT_UPGRADE_LEVELS: Record<UpgradeTrack, number> = {
@@ -39,7 +53,25 @@ export function defaultState(): GameState {
     upgradeLevels: { ...DEFAULT_UPGRADE_LEVELS },
     unlockedUniques: [],
     highestMilestone: null,
+    settings: { ...DEFAULT_SETTINGS },
   }
+}
+
+const VALID_CAP_PERCENTS: ReadonlySet<number> = new Set([0.25, 0.5, 0.75, 0.9, 1.0])
+
+function parseSettings(v: unknown): Settings {
+  const out: Settings = { ...DEFAULT_SETTINGS }
+  if (typeof v !== 'object' || v === null) return out
+  const obj = v as Record<string, unknown>
+  if (
+    typeof obj.autoMinerCapPercent === 'number' &&
+    VALID_CAP_PERCENTS.has(obj.autoMinerCapPercent)
+  ) {
+    out.autoMinerCapPercent = obj.autoMinerCapPercent
+  }
+  if (typeof obj.perfMonitorEnabled === 'boolean') out.perfMonitorEnabled = obj.perfMonitorEnabled
+  if (typeof obj.muted === 'boolean') out.muted = obj.muted
+  return out
 }
 
 const VALID_UNIQUES = new Set<string>(UNIQUE_UPGRADES.map((u) => u.id))
@@ -111,6 +143,7 @@ export function loadState(): GameState | null {
     upgradeLevels,
     unlockedUniques,
     highestMilestone,
+    settings: parseSettings(obj.settings),
   }
 }
 

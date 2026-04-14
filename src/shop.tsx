@@ -55,9 +55,7 @@ function TieredRow({
       </div>
       <div class="shop-row-right">
         {maxed ? (
-          <div class="shop-row-status maxed">
-            {currentVal} (MAX)
-          </div>
+          <div class="shop-row-status maxed">{currentVal} (MAX)</div>
         ) : nextVal !== null && cost !== null ? (
           <>
             <div class="shop-row-values">
@@ -65,7 +63,9 @@ function TieredRow({
             </div>
             <button
               class={`shop-buy${canBuy ? '' : ' disabled'}`}
-              onClick={() => { if (canBuy) onBuy(def.track) }}
+              onClick={() => {
+                if (canBuy) onBuy(def.track)
+              }}
             >
               {cost.toLocaleString()} Ink
             </button>
@@ -103,7 +103,9 @@ function UniqueRow({
         ) : (
           <button
             class={`shop-buy${canBuy ? '' : ' disabled'}`}
-            onClick={() => { if (canBuy) onBuy(def.id) }}
+            onClick={() => {
+              if (canBuy) onBuy(def.id)
+            }}
           >
             {def.cost.toLocaleString()} Ink
           </button>
@@ -127,7 +129,8 @@ function ShopDrawer(props: ShopProps) {
     onBuyUnique,
   } = props
 
-  const hasAvailable = showButton && hasAffordableUpgrade(ink, milestone, upgradeLevels, ownedUniques)
+  const hasAvailable =
+    showButton && hasAffordableUpgrade(ink, milestone, upgradeLevels, ownedUniques)
 
   return (
     <>

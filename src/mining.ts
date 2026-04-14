@@ -83,8 +83,7 @@ export class MiningPrompt {
     const maxWidth = screenWidth - MINING.padX * 2
 
     const lastLine = this.lines[this.lines.length - 1]
-    const canReuseLastLine =
-      lastLine !== undefined && lastLine.chars.every((c) => !c.mined)
+    const canReuseLastLine = lastLine !== undefined && lastLine.chars.every((c) => !c.mined)
 
     const prefix = canReuseLastLine && lastLine ? lastLine.text + ' ' : ''
     const text = prefix + this.generateText(40)
@@ -93,8 +92,7 @@ export class MiningPrompt {
     const result = layoutWithLines(prepared, maxWidth, MINING.lineHeight)
 
     const lines: PromptLine[] = []
-    let globalIdx =
-      canReuseLastLine && lastLine ? lastLine.startIdx : this.totalChars()
+    let globalIdx = canReuseLastLine && lastLine ? lastLine.startIdx : this.totalChars()
     const prefixChars = canReuseLastLine && lastLine ? lastLine.chars : []
     let prefixIdx = 0
 

@@ -1,6 +1,6 @@
-/** Glyph rendering with PixiJS — texture cache and sprite management. */
+/** Glyph rendering with PixiJS — atlas-backed texture cache and sprite management. */
 
-import { Sprite, Texture, Container } from 'pixi.js'
+import { Sprite, Texture, Container, Rectangle } from 'pixi.js'
 import { SCALE, COLORS, FONT_FAMILY } from './constants'
 import type { GlyphData, LetterBody } from './types'
 
@@ -8,6 +8,7 @@ export class LetterRenderer {
   private textureCache = new Map<string, Texture>()
   private spriteMap = new Map<LetterBody, Sprite>()
   private glowMap = new Map<LetterBody, { sprite: Sprite; color: string }>()
+  private atlasBuilt = false
   showGlyphs = true
   showColliders = false
 
@@ -17,6 +18,91 @@ export class LetterRenderer {
   readonly foregroundLayer = new Container()
   /** Container for the dragged letter (topmost). */
   readonly dragLayer = new Container()
+
+  /**
+   * Bake every glyph into one atlas BaseTexture. Each sprite's Texture references
+   * a sub-region of that single source, so Pixi's auto-batcher can flush all
+   * letters in one draw call instead of one per character.
+   */
+  initAtlas(glyphs: Record<string, GlyphData>) {
+    if (this.atlasBuilt) return
+    const dpr = window.devicePixelRatio
+    const pad = 4
+
+    type Cell = {
+      char: string
+      scale: number
+      isUpper: boolean
+      glyph: GlyphData
+      w: number
+      h: number
+      x: number
+      y: number
+    }
+
+    const cells: Cell[] = []
+    for (const char of Object.keys(glyphs)) {
+      const glyph = glyphs[char]!
+      const isUpper = char !== char.toLowerCase()
+      const scale = isUpper ? 1.0 : 0.6
+      const fontSize = SCALE * scale
+      const s = fontSize / 100
+      const w = Math.ceil(glyph.width * s) + pad * 2
+      const h = Math.ceil(glyph.height * s) + pad * 2
+      cells.push({ char, scale, isUpper, glyph, w, h, x: 0, y: 0 })
+    }
+
+    const maxRowW = 2048
+    let curX = 0
+    let curY = 0
+    let rowH = 0
+    let atlasW = 0
+    for (const cell of cells) {
+      if (curX + cell.w > maxRowW) {
+        curY += rowH
+        curX = 0
+        rowH = 0
+      }
+      cell.x = curX
+      cell.y = curY
+      curX += cell.w
+      if (cell.h > rowH) rowH = cell.h
+      if (curX > atlasW) atlasW = curX
+    }
+    const atlasH = curY + rowH
+
+    const oc = new OffscreenCanvas(atlasW * dpr, atlasH * dpr)
+    const octx = oc.getContext('2d')
+    if (!octx) throw new Error('No 2d context on OffscreenCanvas')
+    octx.scale(dpr, dpr)
+    octx.textBaseline = 'alphabetic'
+    octx.textAlign = 'left'
+
+    for (const cell of cells) {
+      const fontSize = SCALE * cell.scale
+      const s = fontSize / 100
+      octx.font = `bold ${fontSize}px ${FONT_FAMILY}`
+      octx.fillStyle = cell.isUpper ? COLORS.inkDark : COLORS.ink
+      octx.fillText(
+        cell.char,
+        cell.x + (-cell.glyph.offsetX * s + pad),
+        cell.y + (-cell.glyph.offsetY * s + pad),
+      )
+    }
+
+    const atlasTex = Texture.from({ resource: oc.transferToImageBitmap(), resolution: dpr })
+    const source = atlasTex.source
+
+    for (const cell of cells) {
+      const tex = new Texture({
+        source,
+        frame: new Rectangle(cell.x, cell.y, cell.w, cell.h),
+      })
+      this.textureCache.set(`${cell.char}_${cell.scale}_${dpr}`, tex)
+    }
+
+    this.atlasBuilt = true
+  }
 
   private getTexture(glyph: GlyphData, isUpper: boolean, scale: number): Texture {
     const dpr = window.devicePixelRatio

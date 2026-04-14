@@ -98,9 +98,7 @@ function TierSection({ tier }: { tier: TierStats }) {
             </span>
           ))}
         {undiscoveredCount > 0 && (
-          <span class="dict-undiscovered">
-            +{undiscoveredCount.toLocaleString()} undiscovered
-          </span>
+          <span class="dict-undiscovered">+{undiscoveredCount.toLocaleString()} undiscovered</span>
         )}
       </div>
     </div>
@@ -139,9 +137,7 @@ function DictionaryOverlay(props: DictionaryScreenProps) {
               <div class="dict-stats-title">Stats</div>
               <div class="dict-stat-row">
                 <span class="dict-stat-label">Total Ink Earned</span>
-                <span class="dict-stat-value">
-                  {Math.floor(totalInkEarned).toLocaleString()}
-                </span>
+                <span class="dict-stat-value">{Math.floor(totalInkEarned).toLocaleString()}</span>
               </div>
               {stats.longestWord && (
                 <div class="dict-stat-row">

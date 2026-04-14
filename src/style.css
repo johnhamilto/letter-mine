@@ -90,6 +90,27 @@ html, body {
   opacity: 1;
 }
 
+/* ── Perf monitor ── */
+
+.perf-monitor {
+  position: fixed;
+  top: 40px;
+  right: 16px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: #2C2416;
+  background: rgba(245, 240, 232, 0.82);
+  border: 1px solid #C4B69C;
+  border-radius: 3px;
+  padding: 6px 10px;
+  pointer-events: none;
+  z-index: 5;
+  user-select: none;
+  white-space: pre;
+  line-height: 1.5;
+}
+
 /* ── Shop button ── */
 
 /* ── HUD elements (DOM) ── */
@@ -325,6 +346,181 @@ html, body {
   color: #F5F0E8;
   cursor: default;
   pointer-events: none;
+}
+
+/* ── Settings button + drawer ── */
+
+.settings-btn {
+  position: fixed;
+  top: 14px;
+  right: 72px;
+  font-family: 'Playfair Display', serif;
+  font-size: 13px;
+  color: #9E8E76;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  z-index: 21;
+  transition: color 0.15s, right 0.25s ease;
+  user-select: none;
+}
+
+.settings-btn.settings-open {
+  right: 356px;
+}
+
+.settings-btn:hover {
+  color: #2C2416;
+  text-decoration: underline;
+}
+
+.settings-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 340px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.settings-panel {
+  position: absolute;
+  inset: 0;
+  background: #F5F0E8;
+  border-left: 2px solid #8B7355;
+  box-shadow: -4px 0 16px rgba(44, 36, 22, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+
+.settings-overlay.open .settings-panel {
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #C4B69C;
+}
+
+.settings-header h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px;
+  font-weight: bold;
+  color: #2C2416;
+  margin: 0;
+}
+
+.settings-close {
+  font-family: 'Playfair Display', serif;
+  font-size: 16px;
+  font-weight: bold;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid #8B7355;
+  border-radius: 4px;
+  background: transparent;
+  color: #9E8E76;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.settings-close:hover {
+  background: #2C2416;
+  color: #EDE6D6;
+}
+
+.settings-content {
+  overflow-y: auto;
+  padding: 16px 20px 20px;
+  flex: 1;
+}
+
+.settings-section {
+  margin-bottom: 22px;
+}
+
+.settings-section h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 15px;
+  font-weight: bold;
+  color: #2C2416;
+  margin: 0 0 6px;
+}
+
+.settings-hint {
+  font-family: 'Playfair Display', serif;
+  font-size: 12px;
+  color: #9E8E76;
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+
+.settings-presets {
+  display: flex;
+  gap: 4px;
+}
+
+.settings-preset {
+  flex: 1;
+  font-family: 'Playfair Display', serif;
+  padding: 6px 4px;
+  border: 1.5px solid #C4B69C;
+  border-radius: 4px;
+  background: transparent;
+  color: #2C2416;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.settings-preset:hover {
+  background: rgba(107, 68, 35, 0.08);
+  border-color: #8B7355;
+}
+
+.settings-preset.active {
+  background: #6B4423;
+  border-color: #6B4423;
+  color: #EDE6D6;
+}
+
+.settings-preset-label {
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1.1;
+}
+
+.settings-preset-hint {
+  font-size: 10px;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Playfair Display', serif;
+  font-size: 14px;
+  color: #2C2416;
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #6B4423;
+  cursor: pointer;
 }
 
 /* ── Dictionary button ── */

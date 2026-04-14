@@ -6,9 +6,10 @@ import { Shelf } from './shelf'
 import { LetterRenderer } from './render'
 import { Economy } from './economy'
 import { Hud } from './hud'
-import { loadState, startAutoSave, type GameState } from './state'
+import { loadState, startAutoSave, DEFAULT_SETTINGS, type GameState, type Settings } from './state'
 import { getUpgradeValue, getUpgradeCost, milestoneReached, UNIQUE_UPGRADES } from './upgrades'
 import { renderShop } from './shop.tsx'
+import { renderSettings } from './settings.tsx'
 import { renderDictionaryScreen } from './dictionary-screen.tsx'
 import { AutoMiner } from './auto-miner'
 import { ApprenticeShelf } from './apprentice-shelf'
@@ -16,6 +17,7 @@ import { saveState } from './state'
 import { createDevPanel } from './debug'
 import { MarkovGenerator, type MarkovData } from './markov'
 import { SoundManager } from './sound'
+import { PerfMonitor } from './perf-monitor'
 import { SCALE, COLORS, FIXED_DT, MAX_SUBSTEPS, FOREGROUND_MS, BASIN, MINING } from './constants'
 import type {
   GlyphData,
@@ -67,7 +69,9 @@ export class Game {
   }
   unlockedUniques: Set<UniqueUpgrade> = new Set()
   highestMilestone: MilestoneName | null = null
+  settings: Settings = { ...DEFAULT_SETTINGS }
   shopOpen = false
+  settingsOpen = false
   dictionaryOpen = false
   private lastShopRefresh = 0
   private lastShakeTime = 0
@@ -75,6 +79,7 @@ export class Game {
   private ghostCache: { word: string; maxSlots: number; chars: Set<string> } | null = null
   private lastGhostRefresh = 0
   autoMiner: AutoMiner
+  perfMonitor!: PerfMonitor
   siphonMode = false
   apprenticeShelves: ApprenticeShelf[] = []
   /** Dictionary root → all words sharing that root. Built once after dictionary loads. */
@@ -117,6 +122,7 @@ export class Game {
 
     // Renderer
     this.renderer = new LetterRenderer()
+    this.renderer.initAtlas(glyphs)
 
     // Sound
     this.sound = new SoundManager()
@@ -131,7 +137,13 @@ export class Game {
       this.upgradeLevels = { ...this.upgradeLevels, ...saved.upgradeLevels }
       this.unlockedUniques = new Set(saved.unlockedUniques)
       this.highestMilestone = saved.highestMilestone
+      this.settings = { ...DEFAULT_SETTINGS, ...saved.settings }
     }
+    this.sound.muted = this.settings.muted
+
+    // Perf monitor (optional, user-toggled)
+    this.perfMonitor = new PerfMonitor(() => this.letters.length)
+    this.perfMonitor.enabled = this.settings.perfMonitorEnabled
     this.hud = new Hud(this.economy)
     this.hud.getMilestone = () => this.highestMilestone
     this.hud.getTotalWords = () => Object.keys(this.dictionary).length
@@ -289,7 +301,8 @@ export class Game {
       },
     )
 
-    this.autoMiner.shouldPause = () => this.getLetterCount() >= this.getBasinCapacity() * 0.9
+    this.autoMiner.shouldPause = () =>
+      this.getLetterCount() >= this.getBasinCapacity() * this.settings.autoMinerCapPercent
 
     // Apply all upgrade side effects
     this.applyAllUpgrades()
@@ -341,6 +354,11 @@ export class Game {
 
       if (e.key === 'Escape' && this.shopOpen) {
         this.closeShop()
+        return
+      }
+
+      if (e.key === 'Escape' && this.settingsOpen) {
+        this.closeSettings()
         return
       }
 
@@ -554,6 +572,7 @@ export class Game {
       upgradeLevels: { ...this.upgradeLevels },
       unlockedUniques: [...this.unlockedUniques],
       highestMilestone: this.highestMilestone,
+      settings: { ...this.settings },
     }
   }
 
@@ -592,6 +611,39 @@ export class Game {
       onBuyTiered: (track) => this.buyTieredUpgrade(track),
       onBuyUnique: (id) => this.buyUniqueUpgrade(id),
     })
+    this.renderSettingsUI()
+  }
+
+  openSettings() {
+    this.settingsOpen = true
+    if (this.shopOpen) this.shopOpen = false
+    this.renderShopUI()
+  }
+
+  closeSettings() {
+    this.settingsOpen = false
+    this.renderShopUI()
+  }
+
+  renderSettingsUI() {
+    renderSettings({
+      open: this.settingsOpen,
+      settings: this.settings,
+      basinCapacity: this.getBasinCapacity(),
+      onOpen: () => this.openSettings(),
+      onClose: () => this.closeSettings(),
+      onChange: (patch) => this.updateSettings(patch),
+    })
+  }
+
+  updateSettings(patch: Partial<Settings>) {
+    this.settings = { ...this.settings, ...patch }
+    if (patch.muted !== undefined) this.sound.muted = patch.muted
+    if (patch.perfMonitorEnabled !== undefined) {
+      this.perfMonitor.enabled = patch.perfMonitorEnabled
+    }
+    saveState(this.buildSaveState())
+    this.renderSettingsUI()
   }
 
   openDictionary() {
@@ -1288,9 +1340,13 @@ export class Game {
 
   loop = () => {
     const now = performance.now()
-    const frameDt = Math.min((now - this.lastTime) / 1000, 0.1)
+    const rawFrameDt = now - this.lastTime
+    const frameDt = Math.min(rawFrameDt / 1000, 0.1)
     this.lastTime = now
 
+    this.perfMonitor.recordFrame(rawFrameDt)
+
+    const updateStart = performance.now()
     this.autoMiner.update(frameDt)
     for (const a of this.apprenticeShelves) a.update(frameDt)
     this.updateAlchemy(frameDt)
@@ -1302,6 +1358,7 @@ export class Game {
     }
     this.updateOverflow(frameDt)
     this.killOffscreen()
+    this.perfMonitor.recordUpdate(performance.now() - updateStart)
 
     this.accumulator += frameDt
     let steps = 0
@@ -1312,11 +1369,24 @@ export class Game {
     }
     if (steps >= MAX_SUBSTEPS) this.accumulator = 0
 
+    const doRender = () => {
+      const spriteStart = performance.now()
+      this.render()
+      const spriteEnd = performance.now()
+      this.app.renderer.render(this.app.stage)
+      const gpuEnd = performance.now()
+      this.perfMonitor.recordSprite(spriteEnd - spriteStart)
+      this.perfMonitor.recordGpu(gpuEnd - spriteEnd)
+      this.perfMonitor.render()
+    }
+
     if (steps > 0 && !this.waitingForStep) {
       this.waitingForStep = true
       let remaining = steps
       const stepOnce = () => {
+        const stepStart = performance.now()
         this.physics.step((bodies) => {
+          this.perfMonitor.recordPhysicsStep(performance.now() - stepStart)
           this.applyBodyStates(bodies)
           remaining--
           if (remaining > 0) {
@@ -1324,16 +1394,14 @@ export class Game {
             stepOnce()
           } else {
             this.waitingForStep = false
-            this.render()
-            this.app.renderer.render(this.app.stage)
+            doRender()
             requestAnimationFrame(this.loop)
           }
         })
       }
       stepOnce()
     } else {
-      this.render()
-      this.app.renderer.render(this.app.stage)
+      doRender()
       requestAnimationFrame(this.loop)
     }
   }
