@@ -16,7 +16,7 @@ import { saveState } from './state'
 import { createDevPanel } from './debug'
 import { MarkovGenerator, type MarkovData } from './markov'
 import { SoundManager } from './sound'
-import { SCALE, COLORS, FIXED_DT, MAX_SUBSTEPS, FOREGROUND_MS, BASIN } from './constants'
+import { SCALE, COLORS, FIXED_DT, MAX_SUBSTEPS, FOREGROUND_MS, BASIN, MINING } from './constants'
 import type {
   GlyphData,
   LetterBody,
@@ -62,6 +62,8 @@ export class Game {
     inkMultiplier: 0,
     scribesBalance: 0,
     parallelPresses: 0,
+    typeFoundry: 0,
+    alchemy: 0,
   }
   unlockedUniques: Set<UniqueUpgrade> = new Set()
   highestMilestone: MilestoneName | null = null
@@ -267,12 +269,14 @@ export class Game {
 
     // Auto-miner — spawns frequency-weighted letters when idle, biased by Scribe's Balance
     this.autoMiner = new AutoMiner(
-      (char) => {
+      (char, isFirstInBatch) => {
         const x = this.width * (0.1 + Math.random() * 0.8)
         const y = -30 - Math.random() * 40
         this.spawnLetter(char, x, y)
         this.economy.creditLetterMined()
-        this.sound.playKeyClick()
+        // One keyclick per strike — Type Foundry batches would otherwise pile up
+        // into a wall of clicks on each tick.
+        if (isFirstInBatch) this.sound.playKeyClick()
         this.pulseCensus(char)
       },
       () => {
@@ -666,9 +670,6 @@ export class Game {
       case 'autoDiscovery':
         for (const a of this.apprenticeShelves) a.preferHighValue = true
         break
-      case 'overdrive':
-        this.updateAutoMinerRate()
-        break
       case 'imprimatur':
         // Runtime state is just the flag on unlockedUniques; the retroactive
         // sweep is a purchase-time event handled in buyUniqueUpgrade.
@@ -693,6 +694,7 @@ export class Game {
       getDiscoveredWords: () => this.economy.discoveredWords,
       getDictionary: () => this.dictionary,
       getBlockedLetters: () => this.aggregateReservedLetters(holder.shelf),
+      getBlockedWords: () => this.aggregateReservedWords(holder.shelf),
       onWordAssembled: (word) => {
         const entry = this.dictionary[word]
         const score = this.economy.scoreWord(word, [], entry)
@@ -727,6 +729,17 @@ export class Game {
     return blocked
   }
 
+  /** Words every apprentice except `exclude` is currently assembling. */
+  private aggregateReservedWords(exclude: ApprenticeShelf | null): Set<string> {
+    const words = new Set<string>()
+    for (const a of this.apprenticeShelves) {
+      if (a === exclude) continue
+      const w = a.getReservedWord()
+      if (w) words.add(w)
+    }
+    return words
+  }
+
   /**
    * Spawn / trim apprentice shelves to match the Parallel Presses upgrade value.
    * No-op until the Apprentice Shelf unique upgrade has been purchased.
@@ -747,11 +760,16 @@ export class Game {
     this.rebuildSceneGraph()
   }
 
-  /** Compute and apply the auto-miner rate from its tiered level plus Press Overdrive. */
+  /**
+   * Auto-miner configuration:
+   *   rate          = base (auto-miner tier)      — strikes per second
+   *   outputPerTick = Type Foundry level          — letters cast per strike
+   */
   private updateAutoMinerRate() {
     const base = getUpgradeValue('autoMiner', this.upgradeLevels.autoMiner)
-    const multiplier = this.unlockedUniques.has('overdrive') ? 2 : 1
-    this.autoMiner.rate = base * multiplier
+    const foundry = getUpgradeValue('typeFoundry', this.upgradeLevels.typeFoundry)
+    this.autoMiner.rate = base
+    this.autoMiner.outputPerTick = Math.max(1, Math.floor(foundry))
   }
 
   applyUpgrade(track: UpgradeTrack) {
@@ -769,6 +787,7 @@ export class Game {
         this.economy.letterMinedInk = value
         break
       case 'autoMiner':
+      case 'typeFoundry':
         this.updateAutoMinerRate()
         break
       case 'apprenticeShelfWidth':
@@ -831,14 +850,22 @@ export class Game {
     this.dumpShelfLetters(this.shelf.letters.length - 1)
   }
 
-  /** Alchemy: every 2s, remove one of the most-common basin letters and spawn a rare one. */
+  /**
+   * Alchemy: every 2s, rebalance the basin by moving letters from the largest
+   * pile to the smallest. Each conversion picks the most-abundant letter as
+   * victim and the least-abundant letter as recipient. N conversions per tick,
+   * where N is the Alchemy upgrade tier; level 0 disables it.
+   *
+   * The local `counts` snapshot is mutated between iterations so that a batch
+   * of N conversions spreads across several scarce letters instead of dumping
+   * the whole batch into the single emptiest slot.
+   */
   updateAlchemy(dt: number) {
-    if (!this.unlockedUniques.has('alchemy')) return
+    const conversions = getUpgradeValue('alchemy', this.upgradeLevels.alchemy)
+    if (conversions <= 0) return
     this.alchemyTimer += dt
     if (this.alchemyTimer < 2) return
     this.alchemyTimer = 0
-
-    if (this.letters.length === 0) return
 
     const counts = new Map<string, number>()
     for (const letter of this.letters) {
@@ -846,31 +873,57 @@ export class Game {
       counts.set(c, (counts.get(c) ?? 0) + 1)
     }
 
-    let topChar: string | null = null
-    let topCount = 0
-    for (const [ch, count] of counts) {
-      if (count > topCount) {
-        topCount = count
-        topChar = ch
+    for (let n = 0; n < conversions; n++) {
+      if (this.letters.length === 0) return
+
+      // Most abundant → victim.
+      let topChar: string | null = null
+      let topCount = 0
+      for (const [ch, count] of counts) {
+        if (count > topCount) {
+          topCount = count
+          topChar = ch
+        }
       }
+      if (!topChar || topCount <= 0) return
+
+      // Least abundant across a-z (excluding the victim) → recipient.
+      // Ties are broken uniformly so repeated scarcest letters don't always
+      // pick the alphabetically first one.
+      let minCount = Infinity
+      const leastCommon: string[] = []
+      for (let i = 0; i < 26; i++) {
+        const ch = String.fromCharCode(97 + i)
+        if (ch === topChar) continue
+        const c = counts.get(ch) ?? 0
+        if (c < minCount) {
+          minCount = c
+          leastCommon.length = 0
+          leastCommon.push(ch)
+        } else if (c === minCount) {
+          leastCommon.push(ch)
+        }
+      }
+      if (leastCommon.length === 0) return
+      const recipient = leastCommon[Math.floor(Math.random() * leastCommon.length)]!
+
+      const victim = this.letters.find((l) => l.char.toLowerCase() === topChar)
+      if (!victim) return
+
+      this.physics.remove(victim.id)
+      const idx = this.letters.indexOf(victim)
+      if (idx >= 0) this.letters.splice(idx, 1)
+      this.letterMap.delete(victim.id)
+      this.foregroundLetters.delete(victim)
+      this.renderer.removeSprite(victim)
+
+      counts.set(topChar, topCount - 1)
+      counts.set(recipient, (counts.get(recipient) ?? 0) + 1)
+
+      const x = this.width * (0.1 + Math.random() * 0.8)
+      const y = -30 - Math.random() * 40
+      this.spawnLetter(recipient, x, y)
     }
-    if (!topChar) return
-
-    const victim = this.letters.find((l) => l.char.toLowerCase() === topChar)
-    if (!victim) return
-
-    this.physics.remove(victim.id)
-    const idx = this.letters.indexOf(victim)
-    if (idx >= 0) this.letters.splice(idx, 1)
-    this.letterMap.delete(victim.id)
-    this.foregroundLetters.delete(victim)
-    this.renderer.removeSprite(victim)
-
-    const rarePool = ['j', 'x', 'q', 'z']
-    const rare = rarePool[Math.floor(Math.random() * rarePool.length)]!
-    const x = this.width * (0.1 + Math.random() * 0.8)
-    const y = -30 - Math.random() * 40
-    this.spawnLetter(rare, x, y)
   }
 
   basinShake() {
@@ -1346,13 +1399,21 @@ export class Game {
     // Economy HUD
     this.hud.render(this.width, this.height)
 
-    // Apprentice assembly benches — stack vertically above the overflow HUD (or shelf)
-    const BENCH_HEIGHT = 72 // matches apprentice-shelf bench box + a small gap
+    // Apprentice assembly benches — stack vertically above the overflow HUD
+    // (or the main shelf). Skip idle apprentices (no word → no rendered bench),
+    // and never let a bench cross into the mining prompt area on short screens.
+    const BENCH_HEIGHT = 76 // actual bench box height from apprentice-shelf
+    const BENCH_GAP = 6
+    const MIN_BENCH_TOP = MINING.firstLineY + MINING.lineHeight + 16 // keep clear of prompt
     let apprenticeAnchor =
       this.overflowTopY !== null ? this.overflowTopY - 8 : this.shelf.rect.y - 12
     for (const a of this.apprenticeShelves) {
-      a.render(apprenticeAnchor)
-      apprenticeAnchor -= BENCH_HEIGHT
+      if (apprenticeAnchor - BENCH_HEIGHT < MIN_BENCH_TOP) {
+        a.hide()
+        continue
+      }
+      const rendered = a.render(apprenticeAnchor)
+      if (rendered) apprenticeAnchor -= BENCH_HEIGHT + BENCH_GAP
     }
   }
 }

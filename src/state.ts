@@ -26,6 +26,8 @@ const DEFAULT_UPGRADE_LEVELS: Record<UpgradeTrack, number> = {
   inkMultiplier: 0,
   scribesBalance: 0,
   parallelPresses: 0,
+  typeFoundry: 0,
+  alchemy: 0,
 }
 
 export function defaultState(): GameState {
@@ -86,9 +88,14 @@ export function loadState(): GameState | null {
   }
 
   // Uniques: drop any IDs no longer in the game.
-  const unlockedUniques = asStringArray(obj.unlockedUniques).filter((id) =>
-    VALID_UNIQUES.has(id),
-  ) as UniqueUpgrade[]
+  const rawUniques = asStringArray(obj.unlockedUniques)
+  const unlockedUniques = rawUniques.filter((id) => VALID_UNIQUES.has(id)) as UniqueUpgrade[]
+
+  // Migration: 'alchemy' used to be a unique upgrade; it's now a tiered track.
+  // Any player who owned the unique starts at level 1 of the new track.
+  if (rawUniques.includes('alchemy') && upgradeLevels.alchemy < 1) {
+    upgradeLevels.alchemy = 1
+  }
 
   // Milestone: only accept a known name, otherwise null.
   const highestMilestone =

@@ -22,6 +22,11 @@ interface ApprenticeCallbacks {
    * Optional — when omitted (single-apprentice deployments), no reservation is applied.
    */
   getBlockedLetters?: () => Map<string, number>
+  /**
+   * Returns the set of words OTHER apprentices are currently assembling, so two
+   * apprentices never commit to the same word in a parallel-search race.
+   */
+  getBlockedWords?: () => Set<string>
 }
 
 export class ApprenticeShelf {
@@ -68,11 +73,14 @@ export class ApprenticeShelf {
       const msg = e.data
       if (msg.type === 'found' && msg.id === this.pendingRequestId) {
         this.searchPending = false
-        if (msg.word) {
+        if (msg.word && this.canCommitTo(msg.word)) {
           this.currentWord = msg.word
           this.assembling = true
           this.progress = 0
         }
+        // Otherwise: another apprentice beat us to it, the word got discovered,
+        // or peer reservations now starve this word. The next update tick will
+        // retry with fresh state.
       }
     }
 
@@ -177,6 +185,49 @@ export class ApprenticeShelf {
     return counts
   }
 
+  /** The word this apprentice is currently assembling, or null when idle. */
+  getReservedWord(): string | null {
+    return this.assembling ? this.currentWord : null
+  }
+
+  /** Force the bench hidden (e.g. when the Game has no room to display it). */
+  hide() {
+    this.container.visible = false
+  }
+
+  /**
+   * Re-validate a worker's `found` response against current basin + peer state.
+   * Guards against the race where two apprentices dispatched searches in parallel
+   * and the worker returned something that is no longer actually formable (or
+   * got discovered in the meantime, or is already being assembled elsewhere).
+   */
+  private canCommitTo(word: string): boolean {
+    if (this.cb.getDiscoveredWords().has(word)) return false
+    if (this.cb.getBlockedWords?.().has(word)) return false
+
+    const available: Record<string, number> = Object.create(null)
+    for (const letter of this.cb.getLetters()) {
+      const ch = letter.char.toLowerCase()
+      available[ch] = (available[ch] ?? 0) + 1
+    }
+    const blocked = this.cb.getBlockedLetters?.()
+    if (blocked) {
+      for (const [ch, n] of blocked) {
+        available[ch] = Math.max(0, (available[ch] ?? 0) - n)
+      }
+    }
+
+    const needed: Record<string, number> = Object.create(null)
+    for (let i = 0; i < word.length; i++) {
+      const ch = word[i]!
+      needed[ch] = (needed[ch] ?? 0) + 1
+      // Mirror the worker's 2-letter buffer so we don't commit to a word
+      // that will starve the player.
+      if ((available[ch] ?? 0) < needed[ch]! + 2) return false
+    }
+    return true
+  }
+
   private completeAssembly() {
     if (!this.currentWord) return
 
@@ -212,8 +263,12 @@ export class ApprenticeShelf {
     }
   }
 
-  /** Draw the assembly bench above `anchorBottomY`. Called each frame by Game. */
-  render(anchorBottomY: number) {
+  /**
+   * Draw the assembly bench above `anchorBottomY`. Returns true if the bench
+   * actually rendered (bench is visible with progress) so the Game can reserve
+   * vertical space for exactly the apprentices that have something to show.
+   */
+  render(anchorBottomY: number): boolean {
     // Clean up prior frame's letter texts
     for (const t of this.letterTexts) {
       t.removeFromParent()
@@ -224,7 +279,7 @@ export class ApprenticeShelf {
     const prog = this.getProgress()
     if (!prog) {
       this.container.visible = false
-      return
+      return false
     }
     this.container.visible = true
 
@@ -302,5 +357,6 @@ export class ApprenticeShelf {
       this.progressBarFill.roundRect(padX, progY, innerW * prog.progress, progressH, 2)
       this.progressBarFill.fill(COLORS.valid)
     }
+    return true
   }
 }

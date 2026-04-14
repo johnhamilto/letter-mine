@@ -185,6 +185,8 @@ export type UpgradeTrack =
   | 'inkMultiplier'
   | 'scribesBalance'
   | 'parallelPresses'
+  | 'typeFoundry'
+  | 'alchemy'
 
 export type UniqueUpgrade =
   | 'wordCheck'
@@ -193,10 +195,8 @@ export type UniqueUpgrade =
   | 'compositorsPick'
   | 'siphon'
   | 'wordGhost'
-  | 'alchemy'
   | 'apprenticeShelf'
   | 'subWordHarvest'
-  | 'overdrive'
   | 'autoDiscovery'
   | 'imprimatur'
 

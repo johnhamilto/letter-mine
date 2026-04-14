@@ -86,6 +86,22 @@ export const TIERED_UPGRADES: readonly TieredUpgradeDef[] = [
     costs: [300_000, 1_000_000, 3_000_000, 10_000_000],
     requiredMilestone: 'publisher',
   },
+  {
+    track: 'typeFoundry',
+    name: 'Type Foundry',
+    description: 'Letters cast per auto-miner strike',
+    values: [1, 2, 4, 7, 10],
+    costs: [250_000, 750_000, 2_000_000, 6_000_000],
+    requiredMilestone: 'publisher',
+  },
+  {
+    track: 'alchemy',
+    name: 'Alchemy',
+    description: 'Transmutes basin pileups into the letters you have least of',
+    values: [0, 1, 2, 4, 8],
+    costs: [12_000, 35_000, 90_000, 250_000],
+    requiredMilestone: 'wordsmith',
+  },
 ] as const
 
 // ── Unique upgrades ──
@@ -142,13 +158,6 @@ export const UNIQUE_UPGRADES: readonly UniqueUpgradeDef[] = [
     requiredMilestone: 'wordsmith',
   },
   {
-    id: 'alchemy',
-    name: 'Alchemy',
-    description: 'Every 2s, converts one of your most-common basin letters into a rare letter',
-    cost: 12000,
-    requiredMilestone: 'wordsmith',
-  },
-  {
     id: 'apprenticeShelf',
     name: 'Apprentice Shelf',
     description: 'Auto-assembles low-value undiscovered words from the basin',
@@ -161,13 +170,6 @@ export const UNIQUE_UPGRADES: readonly UniqueUpgradeDef[] = [
     description: 'Submitting a word also scores every dictionary word contained within it',
     cost: 20000,
     requiredMilestone: 'lexicographer',
-  },
-  {
-    id: 'overdrive',
-    name: 'Press Overdrive',
-    description: 'Doubles the auto-miner rate',
-    cost: 500000,
-    requiredMilestone: 'publisher',
   },
   {
     id: 'autoDiscovery',

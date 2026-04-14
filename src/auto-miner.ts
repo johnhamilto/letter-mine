@@ -33,7 +33,7 @@ const LETTER_FREQ: ReadonlyArray<[string, number]> = [
 const FREQ_TOTAL = LETTER_FREQ.reduce((acc, [, f]) => acc + f, 0)
 
 export class AutoMiner {
-  private onSpawn: (char: string) => void
+  private onSpawn: (char: string, isFirstInBatch: boolean) => void
   private getBasinCounts: () => Map<string, number>
   private accumulator = 0
   private balanceBlend = 0
@@ -41,10 +41,16 @@ export class AutoMiner {
   /** Characters per second. 0 = disabled. */
   rate = 0
 
+  /** Letters produced per tick — scales with Type Foundry. Clamped to >= 1. */
+  outputPerTick = 1
+
   /** Return true to suppress spawning (e.g. basin near capacity). */
   shouldPause: () => boolean = () => false
 
-  constructor(onSpawn: (char: string) => void, getBasinCounts: () => Map<string, number>) {
+  constructor(
+    onSpawn: (char: string, isFirstInBatch: boolean) => void,
+    getBasinCounts: () => Map<string, number>,
+  ) {
     this.onSpawn = onSpawn
     this.getBasinCounts = getBasinCounts
   }
@@ -68,12 +74,17 @@ export class AutoMiner {
     }
 
     // Blend of normalized-English and normalized-scarcity weights.
+    // At the top blend (>= 1.0) we switch to a steeper 1/(c+1)^2 curve so
+    // that letters with large pileups get effectively zero spawn weight —
+    // otherwise j/q/x/z still leak in just often enough to accumulate.
+    const aggressive = b >= 1
     const counts = this.getBasinCounts()
     let scarcitySum = 0
     const scarcityRaw: number[] = new Array(LETTER_FREQ.length)
     for (let i = 0; i < LETTER_FREQ.length; i++) {
       const [char] = LETTER_FREQ[i]!
-      const s = 1 / ((counts.get(char) ?? 0) + 1)
+      const c = counts.get(char) ?? 0
+      const s = aggressive ? 1 / ((c + 1) * (c + 1)) : 1 / (c + 1)
       scarcityRaw[i] = s
       scarcitySum += s
     }
@@ -99,9 +110,13 @@ export class AutoMiner {
 
     this.accumulator += dt
     const interval = 1 / this.rate
+    const batch = Math.max(1, Math.floor(this.outputPerTick))
     while (this.accumulator >= interval) {
       this.accumulator -= interval
-      this.onSpawn(this.pickLetter())
+      for (let i = 0; i < batch; i++) {
+        this.onSpawn(this.pickLetter(), i === 0)
+        if (this.shouldPause()) break
+      }
     }
   }
 }
