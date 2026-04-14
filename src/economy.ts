@@ -13,11 +13,12 @@ export class Economy {
   /** Ink multiplier bonus fraction (0 = none, 1.0 = +100%). Set by game from upgrade level. */
   inkMultiplierBonus = 0
 
-  /** Last score result for HUD flash. */
-  lastScore: ScoreResult | null = null
-  lastScoreTime = 0
-
-  scoreWord(word: string, letters: ShelfLetter[], entry: DictionaryEntry | undefined): ScoreResult {
+  scoreWord(
+    word: string,
+    letters: ShelfLetter[],
+    entry: DictionaryEntry | undefined,
+    opts: { forceRepeat?: boolean } = {},
+  ): ScoreResult {
     const normalized = word.toLowerCase()
     const length = normalized.length
     const baseValue = Math.floor(Math.pow(length, 1.5) * SCORING.baseScoreMultiplier)
@@ -26,10 +27,11 @@ export class Economy {
     const tierMultiplier = SCORING.tierMultipliers[tier] ?? 1
 
     const bonuses: ScoreBonus[] = []
-    const isRepeat = this.discoveredWords.has(normalized)
+    const alreadyDiscovered = this.discoveredWords.has(normalized)
+    const isRepeat = opts.forceRepeat || alreadyDiscovered
     const root = entry?.root ?? normalized
-    const isFirstInFamily = !this.discoveredRoots.has(root)
-    const isNewDiscovery = !isRepeat
+    const isFirstInFamily = !isRepeat && !this.discoveredRoots.has(root)
+    const isNewDiscovery = !alreadyDiscovered && !opts.forceRepeat
 
     // First in family bonus
     if (isFirstInFamily) {
@@ -65,13 +67,15 @@ export class Economy {
 
     finalInk = Math.floor(finalInk)
 
-    // Update state
-    this.discoveredWords.add(normalized)
-    this.discoveredRoots.add(root)
+    // Update state (only record a new discovery when it genuinely is one)
+    if (!opts.forceRepeat) {
+      this.discoveredWords.add(normalized)
+      this.discoveredRoots.add(root)
+    }
     this.ink += finalInk
     this.totalInkEarned += finalInk
 
-    const result: ScoreResult = {
+    return {
       word,
       baseValue,
       tierMultiplier,
@@ -81,11 +85,6 @@ export class Economy {
       isNewDiscovery,
       isFirstInFamily,
     }
-
-    this.lastScore = result
-    this.lastScoreTime = performance.now()
-
-    return result
   }
 
   letterMinedInk: number = SCORING.letterMinedInk

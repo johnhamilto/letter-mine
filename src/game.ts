@@ -595,7 +595,8 @@ export class Game {
             getDictionary: () => this.dictionary,
             onWordAssembled: (word) => {
               const entry = this.dictionary[word]
-              this.economy.scoreWord(word, [], entry)
+              const score = this.economy.scoreWord(word, [], entry)
+              this.hud.showScore(score)
               this.checkMilestones()
             },
           })
@@ -720,6 +721,7 @@ export class Game {
       const normalized = result.word.toLowerCase()
       const entry = this.dictionary[normalized]
       const score = this.economy.scoreWord(result.word, result.submittedLetters, entry)
+      this.hud.showScore(score)
       console.log(
         `Submitted: ${result.word} -> +${score.finalInk} Ink`,
         score.bonuses.map((b) => b.label).join(', '),
@@ -736,7 +738,11 @@ export class Game {
     }
   }
 
-  /** Score every dictionary word that appears as a contiguous substring (length >= 4). */
+  /**
+   * Score every dictionary word that appears as a contiguous substring (length >= 4).
+   * Each sub-word scores on its own merits — a repeat is a repeat whether or not it
+   * happens to also be contained inside another sub-word of this submission.
+   */
   private harvestSubWords(word: string) {
     const seen = new Set<string>([word])
     for (let start = 0; start < word.length; start++) {
@@ -745,9 +751,9 @@ export class Game {
         if (seen.has(sub)) continue
         seen.add(sub)
         const entry = this.dictionary[sub]
-        if (entry) {
-          this.economy.scoreWord(sub, [], entry)
-        }
+        if (!entry) continue
+        const score = this.economy.scoreWord(sub, [], entry)
+        this.hud.aggregateLastScore(score)
       }
     }
   }

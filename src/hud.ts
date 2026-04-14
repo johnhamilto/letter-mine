@@ -4,7 +4,22 @@ import { Container, Graphics, Text } from 'pixi.js'
 import { COLORS, SCORING } from './constants'
 import type { Economy } from './economy'
 import { getMilestoneDef, MILESTONES } from './upgrades'
-import type { MilestoneName } from './types'
+import type { MilestoneName, ScoreBonus, ScoreResult } from './types'
+
+interface FlashState {
+  finalInk: number
+  bonuses: ScoreBonus[]
+  isRepeat: boolean
+  startTime: number
+  aggregateCount: number
+  /** Y offset relative to the normal base-Y for stacking concurrent flashes. */
+  stackOffset: number
+  mainText: Text
+  bonusText: Text
+}
+
+const FLASH_STACK_SPACING = 46
+const FLASH_STACK_WINDOW_MS = 400
 
 const MILESTONE_FLASH_MS = 4000
 
@@ -28,8 +43,7 @@ export class Hud {
   private inkEl: HTMLDivElement
 
   // PixiJS text objects (animated effects only)
-  private scoreFlashText: Text
-  private scoreBonusText: Text
+  private flashes: FlashState[] = []
   private milestoneContainer: Container
   private milestoneBg: Graphics
   private milestoneLabelText: Text
@@ -70,34 +84,6 @@ export class Hud {
     this.inkEl.className = 'hud-ink'
     this.inkEl.textContent = '0 Ink'
     document.body.appendChild(this.inkEl)
-
-    // Score flash
-    this.scoreFlashText = new Text({
-      text: '',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 28,
-        fontWeight: 'bold',
-        fill: COLORS.valid,
-        align: 'center',
-      },
-    })
-    this.scoreFlashText.anchor.set(0.5, 1)
-    this.scoreFlashText.visible = false
-    this.container.addChild(this.scoreFlashText)
-
-    this.scoreBonusText = new Text({
-      text: '',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 14,
-        fill: COLORS.muted,
-        align: 'center',
-      },
-    })
-    this.scoreBonusText.anchor.set(0.5, 1)
-    this.scoreBonusText.visible = false
-    this.container.addChild(this.scoreBonusText)
 
     // Milestone flash
     this.milestoneContainer = new Container()
@@ -180,45 +166,106 @@ export class Hud {
     this.barTooltip.textContent = `${Math.floor(totalInk).toLocaleString()} / ${nextMs.totalInkRequired.toLocaleString()} Ink`
   }
 
+  /** Start a fresh score toast. Callers use this for independent events (main submit, apprentice). */
+  showScore(score: ScoreResult) {
+    const now = performance.now()
+    // Concurrent flashes (spawned within the stack window) stack vertically
+    const concurrentCount = this.flashes.filter(
+      (f) => now - f.startTime < FLASH_STACK_WINDOW_MS,
+    ).length
+
+    const mainText = new Text({
+      text: '',
+      style: {
+        fontFamily: 'Playfair Display',
+        fontSize: 28,
+        fontWeight: 'bold',
+        fill: score.isRepeat ? COLORS.muted : COLORS.valid,
+        align: 'center',
+      },
+    })
+    mainText.anchor.set(0.5, 1)
+    this.container.addChild(mainText)
+
+    const bonusText = new Text({
+      text: '',
+      style: {
+        fontFamily: 'Playfair Display',
+        fontSize: 14,
+        fill: COLORS.muted,
+        align: 'center',
+      },
+    })
+    bonusText.anchor.set(0.5, 1)
+    this.container.addChild(bonusText)
+
+    this.flashes.push({
+      finalInk: score.finalInk,
+      bonuses: [...score.bonuses],
+      isRepeat: score.isRepeat,
+      startTime: now,
+      aggregateCount: 1,
+      stackOffset: concurrentCount * FLASH_STACK_SPACING,
+      mainText,
+      bonusText,
+    })
+  }
+
+  /** Merge a score into the most recent active flash. Used for sub-words of the current submission. */
+  aggregateLastScore(score: ScoreResult) {
+    const latest = this.flashes[this.flashes.length - 1]
+    if (!latest) {
+      this.showScore(score)
+      return
+    }
+    latest.finalInk += score.finalInk
+    latest.aggregateCount++
+    latest.startTime = performance.now() // extend the flash so it stays visible
+  }
+
   private renderScoreFlash(screenWidth: number) {
-    const score = this.economy.lastScore
-    if (!score) {
-      this.scoreFlashText.visible = false
-      this.scoreBonusText.visible = false
-      return
-    }
-
-    const elapsed = performance.now() - this.economy.lastScoreTime
-    if (elapsed > SCORING.scoreFlashMs) {
-      this.scoreFlashText.visible = false
-      this.scoreBonusText.visible = false
-      return
-    }
-
-    const t = elapsed / SCORING.scoreFlashMs
-    const alpha = t < 0.2 ? t / 0.2 : 1 - (t - 0.2) / 0.8
-    const yOffset = t * -30
-
+    const now = performance.now()
     const centerX = screenWidth / 2
-    const baseY = 80 + yOffset
 
-    this.scoreFlashText.visible = true
-    this.scoreFlashText.text = `+${score.finalInk} Ink`
-    this.scoreFlashText.style.fill = score.isRepeat ? COLORS.muted : COLORS.valid
-    this.scoreFlashText.position.set(centerX, baseY)
-    this.scoreFlashText.alpha = Math.max(0, alpha)
+    for (let i = this.flashes.length - 1; i >= 0; i--) {
+      const flash = this.flashes[i]!
+      const elapsed = now - flash.startTime
+      if (elapsed > SCORING.scoreFlashMs) {
+        flash.mainText.removeFromParent()
+        flash.mainText.destroy()
+        flash.bonusText.removeFromParent()
+        flash.bonusText.destroy()
+        this.flashes.splice(i, 1)
+        continue
+      }
 
-    if (score.bonuses.length > 0 || score.isRepeat) {
-      const tags: string[] = []
-      if (score.isRepeat) tags.push('repeat')
-      for (const b of score.bonuses) tags.push(b.label)
+      const t = elapsed / SCORING.scoreFlashMs
+      const alpha = t < 0.2 ? t / 0.2 : 1 - (t - 0.2) / 0.8
+      const yOffset = t * -30
+      const baseY = 80 + flash.stackOffset + yOffset
 
-      this.scoreBonusText.visible = true
-      this.scoreBonusText.text = tags.join(' / ')
-      this.scoreBonusText.position.set(centerX, baseY + 22)
-      this.scoreBonusText.alpha = Math.max(0, alpha)
-    } else {
-      this.scoreBonusText.visible = false
+      flash.mainText.text = `+${flash.finalInk} Ink`
+      flash.mainText.position.set(centerX, baseY)
+      flash.mainText.alpha = Math.max(0, alpha)
+
+      let subtext = ''
+      if (flash.aggregateCount > 1) {
+        subtext = `${flash.aggregateCount} words`
+      } else if (flash.bonuses.length > 0 || flash.isRepeat) {
+        const tags: string[] = []
+        if (flash.isRepeat) tags.push('repeat')
+        for (const b of flash.bonuses) tags.push(b.label)
+        subtext = tags.join(' / ')
+      }
+
+      if (subtext) {
+        flash.bonusText.text = subtext
+        flash.bonusText.position.set(centerX, baseY + 22)
+        flash.bonusText.alpha = Math.max(0, alpha)
+        flash.bonusText.visible = true
+      } else {
+        flash.bonusText.visible = false
+      }
     }
   }
 

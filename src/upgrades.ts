@@ -136,7 +136,7 @@ export const UNIQUE_UPGRADES: readonly UniqueUpgradeDef[] = [
     id: 'autoDiscovery',
     name: 'Apprentice Specialist',
     description: 'Apprentice targets the highest-value undiscovered words',
-    cost: 200000,
+    cost: 80000,
     requiredMilestone: 'publisher',
   },
 ]
