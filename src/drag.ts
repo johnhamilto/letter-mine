@@ -18,6 +18,9 @@ export class DragController {
   private onSpawnFromShelf: (char: string, x: number, y: number) => LetterBody | null
   private onLetterReleased: (letter: LetterBody) => void
 
+  /** Optional shift-click handler — if returns true, drag is suppressed for this click. */
+  onShiftClickLetter: ((letter: LetterBody) => boolean) | null = null
+
   private dragging: LetterBody | null = null
   private hovered: LetterBody | null = null
   private localAnchor = { x: 0, y: 0 }
@@ -108,6 +111,11 @@ export class DragController {
     const letter = this.findLetterAt(pos.x, pos.y)
 
     if (letter) {
+      if (e.shiftKey && this.onShiftClickLetter) {
+        const handled = this.onShiftClickLetter(letter)
+        if (handled) return
+      }
+
       this.dragging = letter
       this.hovered = null
       this.didDrag = false

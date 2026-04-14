@@ -194,11 +194,7 @@ export class Shelf {
   }
 
   private canReachWord(prefix: string, maxLen: number, counts: Map<string, number>): boolean {
-    if (
-      prefix.length >= 4 &&
-      this.dictionary!.has(prefix) &&
-      !this.discoveredWords?.has(prefix)
-    ) {
+    if (prefix.length >= 4 && this.dictionary!.has(prefix) && !this.discoveredWords?.has(prefix)) {
       return true
     }
     if (prefix.length >= maxLen) return false

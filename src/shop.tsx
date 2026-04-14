@@ -162,7 +162,7 @@ function ShopDrawer(props: ShopProps) {
               return (
                 <div key={ms.name} class={`shop-section${unlocked ? '' : ' locked'}`}>
                   <h3>
-                    {ms.displayName} ({ms.totalInkRequired.toLocaleString()} Ink)
+                    {ms.displayName} ({ms.wordsRequired.toLocaleString()} words)
                     {!unlocked && <span class="shop-lock"> &mdash; locked</span>}
                   </h3>
                   {tiered.map((def) => (

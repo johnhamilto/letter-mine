@@ -183,16 +183,22 @@ export type UpgradeTrack =
   | 'miningQuality'
   | 'autoMiner'
   | 'inkMultiplier'
+  | 'scribesBalance'
+  | 'parallelPresses'
 
 export type UniqueUpgrade =
   | 'wordCheck'
   | 'basinShake'
   | 'letterCount'
+  | 'compositorsPick'
   | 'siphon'
   | 'wordGhost'
+  | 'alchemy'
   | 'apprenticeShelf'
   | 'subWordHarvest'
+  | 'overdrive'
   | 'autoDiscovery'
+  | 'imprimatur'
 
 export type MilestoneName =
   | 'apprentice'
@@ -200,3 +206,4 @@ export type MilestoneName =
   | 'wordsmith'
   | 'lexicographer'
   | 'publisher'
+  | 'master'

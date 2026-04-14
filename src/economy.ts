@@ -99,6 +99,24 @@ export class Economy {
     return this.discoveredWords.has(word.toLowerCase())
   }
 
+  /**
+   * Silently adds words to the discovered set without crediting ink. Used by
+   * Imprimatur to reveal family members of a submitted word's root — the root
+   * already paid the first-in-family bonus, so this is pure set-membership growth.
+   * Returns the list of words that were actually newly discovered.
+   */
+  discoverFamily(words: Iterable<string>): string[] {
+    const added: string[] = []
+    for (const w of words) {
+      const lc = w.toLowerCase()
+      if (!this.discoveredWords.has(lc)) {
+        this.discoveredWords.add(lc)
+        added.push(lc)
+      }
+    }
+    return added
+  }
+
   spendInk(amount: number): boolean {
     if (this.ink < amount) return false
     this.ink -= amount

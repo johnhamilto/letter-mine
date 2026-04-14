@@ -5,11 +5,11 @@
 
 import { Container, Graphics, Text } from 'pixi.js'
 import { COLORS } from './constants'
+import type { ApprenticeWorkerInMsg, ApprenticeWorkerOutMsg } from './apprentice-worker'
 import type { DictionaryEntry } from './types'
 import type { LetterBody } from './types'
 
-const COOLDOWN_MS = 2000 // pause between words
-const SEARCH_THROTTLE_MS = 500 // don't scan dictionary more than twice per second
+const SEARCH_THROTTLE_MS = 500 // don't scan dictionary more than twice per second when idle
 
 interface ApprenticeCallbacks {
   getLetters: () => LetterBody[]
@@ -17,12 +17,16 @@ interface ApprenticeCallbacks {
   getDiscoveredWords: () => Set<string>
   getDictionary: () => Record<string, DictionaryEntry>
   onWordAssembled: (word: string) => void
+  /**
+   * Returns letter counts reserved by OTHER apprentices currently assembling a word.
+   * Optional — when omitted (single-apprentice deployments), no reservation is applied.
+   */
+  getBlockedLetters?: () => Map<string, number>
 }
 
 export class ApprenticeShelf {
   private cb: ApprenticeCallbacks
   private assembling = false
-  private cooldownUntil = 0
   private lastSearchAt = 0
   private currentWord: string | null = null
   private progress = 0
@@ -35,6 +39,13 @@ export class ApprenticeShelf {
 
   /** When true, the apprentice targets the HIGHEST-value undiscovered word (Auto-Discovery upgrade). */
   preferHighValue = false
+
+  // Worker state
+  private worker: Worker
+  private workerInitialized = false
+  private searchPending = false
+  private nextRequestId = 1
+  private pendingRequestId = 0
 
   /** PixiJS container for the assembly display (positioned above the player shelf). */
   readonly container = new Container()
@@ -49,6 +60,21 @@ export class ApprenticeShelf {
 
   constructor(cb: ApprenticeCallbacks) {
     this.cb = cb
+
+    this.worker = new Worker(new URL('./apprentice-worker.ts', import.meta.url), {
+      type: 'module',
+    })
+    this.worker.onmessage = (e: MessageEvent<ApprenticeWorkerOutMsg>) => {
+      const msg = e.data
+      if (msg.type === 'found' && msg.id === this.pendingRequestId) {
+        this.searchPending = false
+        if (msg.word) {
+          this.currentWord = msg.word
+          this.assembling = true
+          this.progress = 0
+        }
+      }
+    }
 
     this.container.addChild(this.bg)
     this.container.addChild(this.slotsGfx)
@@ -70,6 +96,20 @@ export class ApprenticeShelf {
     this.container.visible = false
   }
 
+  /** Send the dictionary to the worker. Idempotent — caller can re-call safely. */
+  private ensureWorkerReady(dictionary: Record<string, DictionaryEntry>) {
+    if (this.workerInitialized) return
+    if (Object.keys(dictionary).length === 0) return
+    const msg: ApprenticeWorkerInMsg = { type: 'init', dictionary }
+    this.worker.postMessage(msg)
+    this.workerInitialized = true
+  }
+
+  /** Dispose the worker — call when the game is torn down. */
+  destroy() {
+    this.worker.terminate()
+  }
+
   resize(screenWidth: number) {
     this.screenWidth = screenWidth
   }
@@ -81,77 +121,60 @@ export class ApprenticeShelf {
       this.progress += dt * 1000
       if (this.progress >= this.assemblyMs) {
         this.completeAssembly()
-        this.cooldownUntil = now + COOLDOWN_MS
       }
       return
     }
 
-    if (now < this.cooldownUntil) return
+    if (this.searchPending) return
     if (now - this.lastSearchAt < SEARCH_THROTTLE_MS) return
     this.lastSearchAt = now
 
-    const word = this.findBestWord()
-    if (word) {
-      this.currentWord = word
-      this.assembling = true
-      this.progress = 0
-    }
+    this.requestFindAsync()
   }
 
-  private findBestWord(): string | null {
-    const letters = this.cb.getLetters()
-    const discovered = this.cb.getDiscoveredWords()
+  private requestFindAsync() {
     const dictionary = this.cb.getDictionary()
+    this.ensureWorkerReady(dictionary)
+    if (!this.workerInitialized) return
 
-    // Count available letters in basin
-    const available = new Map<string, number>()
-    for (const letter of letters) {
+    const basinCounts: Record<string, number> = Object.create(null)
+    for (const letter of this.cb.getLetters()) {
       const ch = letter.char.toLowerCase()
-      available.set(ch, (available.get(ch) ?? 0) + 1)
+      basinCounts[ch] = (basinCounts[ch] ?? 0) + 1
     }
 
-    // Group formable undiscovered words by length, keeping only the preferred tier per length.
-    // Tier scale: 0 = legendary, 4 = universal. Default prefers tier 4 (common); Specialist prefers 0 (rare).
-    const byLength = new Map<number, { bestTier: number; words: string[] }>()
-
-    for (const word in dictionary) {
-      const len = word.length
-      if (len < 4 || len > this.maxLength) continue
-      if (discovered.has(word)) continue
-
-      let canForm = true
-      const needed = new Map<string, number>()
-      for (const ch of word) {
-        needed.set(ch, (needed.get(ch) ?? 0) + 1)
-        if ((available.get(ch) ?? 0) < needed.get(ch)!) {
-          canForm = false
-          break
-        }
-      }
-      if (!canForm) continue
-
-      const tier = dictionary[word]?.tier ?? 0
-      const bucket = byLength.get(len)
-      if (!bucket) {
-        byLength.set(len, { bestTier: tier, words: [word] })
-      } else {
-        const tierBetter = this.preferHighValue ? tier < bucket.bestTier : tier > bucket.bestTier
-        if (tierBetter) {
-          bucket.bestTier = tier
-          bucket.words = [word]
-        } else if (tier === bucket.bestTier) {
-          bucket.words.push(word)
-        }
+    // Subtract letters reserved by peer apprentices assembling in parallel.
+    const blocked = this.cb.getBlockedLetters?.()
+    if (blocked) {
+      for (const [ch, n] of blocked) {
+        basinCounts[ch] = Math.max(0, (basinCounts[ch] ?? 0) - n)
       }
     }
 
-    const lengths = [...byLength.keys()]
-    if (lengths.length === 0) return null
+    this.pendingRequestId = this.nextRequestId++
+    this.searchPending = true
+    const msg: ApprenticeWorkerInMsg = {
+      type: 'find',
+      id: this.pendingRequestId,
+      discovered: [...this.cb.getDiscoveredWords()],
+      basinCounts,
+      maxLength: this.maxLength,
+      preferHighValue: this.preferHighValue,
+    }
+    this.worker.postMessage(msg)
+  }
 
-    // Uniform random length, then random word within the preferred-tier pool for that length.
-    const randomLength = lengths[Math.floor(Math.random() * lengths.length)]!
-    const bucket = byLength.get(randomLength)!
-    return bucket.words[Math.floor(Math.random() * bucket.words.length)] ?? null
+  /**
+   * Letter counts this apprentice has committed to assembling right now.
+   * Empty when idle or during the post-completion display window.
+   */
+  getReservedLetters(): Map<string, number> {
+    const counts = new Map<string, number>()
+    if (!this.assembling || !this.currentWord) return counts
+    for (const ch of this.currentWord) {
+      counts.set(ch, (counts.get(ch) ?? 0) + 1)
+    }
+    return counts
   }
 
   private completeAssembly() {
@@ -247,7 +270,10 @@ export class ApprenticeShelf {
     }
 
     // Letters that have "arrived" based on progress
-    const lettersArrived = Math.floor(prog.progress * n)
+    // Letters fill in during the first half of the cycle, then hold fully visible
+    // for the second half so the word is actually readable.
+    const fillT = Math.min(1, prog.progress * 2)
+    const lettersArrived = Math.floor(fillT * n)
     for (let i = 0; i < lettersArrived; i++) {
       const t = new Text({
         text: word[i]!.toUpperCase(),

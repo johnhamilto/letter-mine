@@ -30,26 +30,13 @@ const LETTER_FREQ: ReadonlyArray<[string, number]> = [
   ['z', 0.07],
 ]
 
-const CDF: ReadonlyArray<{ char: string; cumulative: number }> = (() => {
-  let sum = 0
-  const total = LETTER_FREQ.reduce((acc, [, f]) => acc + f, 0)
-  return LETTER_FREQ.map(([char, freq]) => {
-    sum += freq / total
-    return { char, cumulative: sum }
-  })
-})()
-
-function pickLetter(): string {
-  const r = Math.random()
-  for (const entry of CDF) {
-    if (r <= entry.cumulative) return entry.char
-  }
-  return 'e'
-}
+const FREQ_TOTAL = LETTER_FREQ.reduce((acc, [, f]) => acc + f, 0)
 
 export class AutoMiner {
   private onSpawn: (char: string) => void
+  private getBasinCounts: () => Map<string, number>
   private accumulator = 0
+  private balanceBlend = 0
 
   /** Characters per second. 0 = disabled. */
   rate = 0
@@ -57,8 +44,50 @@ export class AutoMiner {
   /** Return true to suppress spawning (e.g. basin near capacity). */
   shouldPause: () => boolean = () => false
 
-  constructor(onSpawn: (char: string) => void) {
+  constructor(onSpawn: (char: string) => void, getBasinCounts: () => Map<string, number>) {
     this.onSpawn = onSpawn
+    this.getBasinCounts = getBasinCounts
+  }
+
+  /** Scribe's Balance blend. 0 = pure English freq, 1 = pure scarcity-weighted. */
+  setBalanceBlend(blend: number) {
+    this.balanceBlend = Math.max(0, Math.min(1, blend))
+  }
+
+  private pickLetter(): string {
+    const b = this.balanceBlend
+    // Fast path: no scarcity bias, use static English frequency.
+    if (b <= 0) {
+      const r = Math.random() * FREQ_TOTAL
+      let sum = 0
+      for (const [char, freq] of LETTER_FREQ) {
+        sum += freq
+        if (r <= sum) return char
+      }
+      return 'e'
+    }
+
+    // Blend of normalized-English and normalized-scarcity weights.
+    const counts = this.getBasinCounts()
+    let scarcitySum = 0
+    const scarcityRaw: number[] = new Array(LETTER_FREQ.length)
+    for (let i = 0; i < LETTER_FREQ.length; i++) {
+      const [char] = LETTER_FREQ[i]!
+      const s = 1 / ((counts.get(char) ?? 0) + 1)
+      scarcityRaw[i] = s
+      scarcitySum += s
+    }
+
+    const r = Math.random()
+    let sum = 0
+    for (let i = 0; i < LETTER_FREQ.length; i++) {
+      const [char, freq] = LETTER_FREQ[i]!
+      const freqNorm = freq / FREQ_TOTAL
+      const scarcityNorm = scarcityRaw[i]! / scarcitySum
+      sum += freqNorm * (1 - b) + scarcityNorm * b
+      if (r <= sum) return char
+    }
+    return 'e'
   }
 
   update(dt: number) {
@@ -72,7 +101,7 @@ export class AutoMiner {
     const interval = 1 / this.rate
     while (this.accumulator >= interval) {
       this.accumulator -= interval
-      this.onSpawn(pickLetter())
+      this.onSpawn(this.pickLetter())
     }
   }
 }

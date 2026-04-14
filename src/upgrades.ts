@@ -18,7 +18,7 @@ export const TIERED_UPGRADES: readonly TieredUpgradeDef[] = [
     track: 'basinCapacity',
     name: 'Basin Capacity',
     description: 'Max letters in the basin',
-    values: [50, 75, 100, 150, 200, 300, 500],
+    values: [50, 75, 100, 150, 200, 300, 500, 1000],
     costs: [300, 800, 2000, 5000, 15000, 40000, 100000],
     requiredMilestone: 'apprentice',
   },
@@ -27,7 +27,7 @@ export const TIERED_UPGRADES: readonly TieredUpgradeDef[] = [
     name: 'Shelf Width',
     description: 'Max letters on the shelf',
     values: [4, 5, 6, 7, 8, 9, 11, 15, 22, 45],
-    costs: [200, 400, 800, 1500, 3000, 6000, 15000, 40000, 150000, 500000],
+    costs: [200, 400, 800, 1500, 3000, 6000, 15000, 40000, 150000],
     requiredMilestone: 'apprentice',
   },
   {
@@ -41,8 +41,8 @@ export const TIERED_UPGRADES: readonly TieredUpgradeDef[] = [
   {
     track: 'autoMiner',
     name: 'Auto-Miner',
-    description: "Auto-types when you're idle",
-    values: [0, 0.5, 1, 2, 3, 5], // chars/sec, 0 = not purchased
+    description: 'Spawns letters at this rate while idle',
+    values: [0, 1, 2, 4, 6, 9], // chars/sec, 0 = not purchased
     costs: [3000, 8000, 25000, 70000, 200000],
     requiredMilestone: 'wordsmith',
   },
@@ -59,16 +59,32 @@ export const TIERED_UPGRADES: readonly TieredUpgradeDef[] = [
     name: 'Apprentice Shelf Width',
     description: 'Max word length for the apprentice shelf',
     values: [4, 5, 6, 7, 8, 9, 11, 15, 22, 45],
-    costs: [3000, 6000, 12000, 25000, 50000, 100000, 200000, 400000, 800000, 1500000],
+    costs: [3000, 6000, 12000, 25000, 50000, 100000, 200000, 400000, 800000],
     requiredMilestone: 'lexicographer',
   },
   {
     track: 'apprenticeSpeed',
     name: 'Apprentice Speed',
-    description: 'Seconds to assemble one word',
-    values: [8, 6, 4.5, 3, 2, 1.25], // seconds per word
+    description: 'Seconds per full apprentice cycle',
+    values: [8, 6, 4.5, 3, 2, 1], // seconds per complete cycle (no separate cooldown)
     costs: [4000, 10000, 25000, 60000, 150000],
     requiredMilestone: 'lexicographer',
+  },
+  {
+    track: 'scribesBalance',
+    name: "Scribe's Balance",
+    description: 'Auto-miner spawns more of the letters your basin is running low on',
+    values: [0, 0.2, 0.4, 0.6, 0.8, 1.0], // 0 = English freq, 1 = pure scarcity-weighted
+    costs: [3000, 8000, 20000, 50000, 120000],
+    requiredMilestone: 'lexicographer',
+  },
+  {
+    track: 'parallelPresses',
+    name: 'Parallel Presses',
+    description: 'Additional apprentices working at once',
+    values: [1, 2, 3, 4, 6],
+    costs: [300_000, 1_000_000, 3_000_000, 10_000_000],
+    requiredMilestone: 'publisher',
   },
 ] as const
 
@@ -89,6 +105,13 @@ export const UNIQUE_UPGRADES: readonly UniqueUpgradeDef[] = [
     description: 'Shift+Space to scatter piled letters',
     cost: 1000,
     requiredMilestone: 'apprentice',
+  },
+  {
+    id: 'compositorsPick',
+    name: "Compositor's Pick",
+    description: 'Shift-click a basin letter to banish it',
+    cost: 3000,
+    requiredMilestone: 'journeyman',
   },
   {
     id: 'letterCount',
@@ -119,6 +142,13 @@ export const UNIQUE_UPGRADES: readonly UniqueUpgradeDef[] = [
     requiredMilestone: 'wordsmith',
   },
   {
+    id: 'alchemy',
+    name: 'Alchemy',
+    description: 'Every 2s, converts one of your most-common basin letters into a rare letter',
+    cost: 12000,
+    requiredMilestone: 'wordsmith',
+  },
+  {
     id: 'apprenticeShelf',
     name: 'Apprentice Shelf',
     description: 'Auto-assembles low-value undiscovered words from the basin',
@@ -133,10 +163,24 @@ export const UNIQUE_UPGRADES: readonly UniqueUpgradeDef[] = [
     requiredMilestone: 'lexicographer',
   },
   {
+    id: 'overdrive',
+    name: 'Press Overdrive',
+    description: 'Doubles the auto-miner rate',
+    cost: 500000,
+    requiredMilestone: 'publisher',
+  },
+  {
     id: 'autoDiscovery',
     name: 'Apprentice Specialist',
     description: 'Apprentice targets the highest-value undiscovered words',
     cost: 80000,
+    requiredMilestone: 'publisher',
+  },
+  {
+    id: 'imprimatur',
+    name: 'Imprimatur',
+    description: "Every submit also reveals the word's family",
+    cost: 400_000,
     requiredMilestone: 'publisher',
   },
 ]
@@ -146,15 +190,17 @@ export const UNIQUE_UPGRADES: readonly UniqueUpgradeDef[] = [
 export interface MilestoneDef {
   name: MilestoneName
   displayName: string
-  totalInkRequired: number
+  wordsRequired: number
 }
 
 export const MILESTONES: readonly MilestoneDef[] = [
-  { name: 'apprentice', displayName: 'Apprentice', totalInkRequired: 500 },
-  { name: 'journeyman', displayName: 'Journeyman', totalInkRequired: 5000 },
-  { name: 'wordsmith', displayName: 'Wordsmith', totalInkRequired: 20000 },
-  { name: 'lexicographer', displayName: 'Lexicographer', totalInkRequired: 80000 },
-  { name: 'publisher', displayName: 'Publisher', totalInkRequired: 300000 },
+  { name: 'apprentice', displayName: 'Apprentice', wordsRequired: 10 },
+  { name: 'journeyman', displayName: 'Journeyman', wordsRequired: 50 },
+  { name: 'wordsmith', displayName: 'Wordsmith', wordsRequired: 150 },
+  { name: 'lexicographer', displayName: 'Lexicographer', wordsRequired: 500 },
+  { name: 'publisher', displayName: 'Publisher', wordsRequired: 1500 },
+  // Master threshold is the full dictionary size, resolved at runtime via totalWords arg.
+  { name: 'master', displayName: 'Master', wordsRequired: Infinity },
 ]
 
 // ── Lookup functions ──
@@ -188,10 +234,14 @@ export function isMaxLevel(track: UpgradeTrack, level: number): boolean {
   return level >= def.costs.length
 }
 
-export function milestoneReached(totalInk: number): MilestoneName | null {
+export function milestoneReached(
+  wordsDiscovered: number,
+  totalWords?: number,
+): MilestoneName | null {
   let highest: MilestoneName | null = null
   for (const m of MILESTONES) {
-    if (totalInk >= m.totalInkRequired) highest = m.name
+    const threshold = m.wordsRequired === Infinity ? (totalWords ?? Infinity) : m.wordsRequired
+    if (wordsDiscovered >= threshold) highest = m.name
   }
   return highest
 }

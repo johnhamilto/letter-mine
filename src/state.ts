@@ -24,6 +24,8 @@ const DEFAULT_UPGRADE_LEVELS: Record<UpgradeTrack, number> = {
   miningQuality: 0,
   autoMiner: 0,
   inkMultiplier: 0,
+  scribesBalance: 0,
+  parallelPresses: 0,
 }
 
 export function defaultState(): GameState {

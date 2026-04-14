@@ -60,6 +60,8 @@ export class Game {
     miningQuality: 0,
     autoMiner: 0,
     inkMultiplier: 0,
+    scribesBalance: 0,
+    parallelPresses: 0,
   }
   unlockedUniques: Set<UniqueUpgrade> = new Set()
   highestMilestone: MilestoneName | null = null
@@ -67,11 +69,14 @@ export class Game {
   dictionaryOpen = false
   private lastShopRefresh = 0
   private lastShakeTime = 0
+  private alchemyTimer = 0
   private ghostCache: { word: string; maxSlots: number; chars: Set<string> } | null = null
   private lastGhostRefresh = 0
   autoMiner: AutoMiner
   siphonMode = false
-  apprenticeShelf: ApprenticeShelf | null = null
+  apprenticeShelves: ApprenticeShelf[] = []
+  /** Dictionary root → all words sharing that root. Built once after dictionary loads. */
+  private familyMap = new Map<string, string[]>()
 
   private censusEl: HTMLDivElement | null = null
   private censusCountEls: Record<string, HTMLSpanElement> = {}
@@ -127,8 +132,12 @@ export class Game {
     }
     this.hud = new Hud(this.economy)
     this.hud.getMilestone = () => this.highestMilestone
+    this.hud.getTotalWords = () => Object.keys(this.dictionary).length
     this.hud.onDictionaryOpen = () => this.openDictionary()
-    const reached = milestoneReached(this.economy.totalInkEarned)
+    const reached = milestoneReached(
+      this.economy.discoveredWords.size,
+      Object.keys(this.dictionary).length,
+    )
     if (reached) this.highestMilestone = reached
 
     // Shelf
@@ -256,15 +265,25 @@ export class Game {
     // Rebuild scene graph now that mining exists
     this.rebuildSceneGraph()
 
-    // Auto-miner — spawns frequency-weighted letters when idle
-    this.autoMiner = new AutoMiner((char) => {
-      const x = this.width * (0.1 + Math.random() * 0.8)
-      const y = -30 - Math.random() * 40
-      this.spawnLetter(char, x, y)
-      this.economy.creditLetterMined()
-      this.sound.playKeyClick()
-      this.pulseCensus(char)
-    })
+    // Auto-miner — spawns frequency-weighted letters when idle, biased by Scribe's Balance
+    this.autoMiner = new AutoMiner(
+      (char) => {
+        const x = this.width * (0.1 + Math.random() * 0.8)
+        const y = -30 - Math.random() * 40
+        this.spawnLetter(char, x, y)
+        this.economy.creditLetterMined()
+        this.sound.playKeyClick()
+        this.pulseCensus(char)
+      },
+      () => {
+        const counts = new Map<string, number>()
+        for (const letter of this.letters) {
+          const c = letter.char.toLowerCase()
+          counts.set(c, (counts.get(c) ?? 0) + 1)
+        }
+        return counts
+      },
+    )
 
     this.autoMiner.shouldPause = () => this.getLetterCount() >= this.getBasinCapacity() * 0.9
 
@@ -298,6 +317,16 @@ export class Game {
         this.foregroundLetters.set(letter, performance.now())
       },
     )
+    this.drag.onShiftClickLetter = (letter) => {
+      if (!this.unlockedUniques.has('compositorsPick')) return false
+      this.physics.remove(letter.id)
+      const idx = this.letters.indexOf(letter)
+      if (idx >= 0) this.letters.splice(idx, 1)
+      this.letterMap.delete(letter.id)
+      this.foregroundLetters.delete(letter)
+      this.renderer.removeSprite(letter)
+      return true
+    }
 
     // Keyboard
     window.addEventListener('keydown', (e) => {
@@ -363,8 +392,8 @@ export class Game {
     stage.addChild(this.renderer.dragLayer)
     stage.addChild(this.overflowHudContainer)
     stage.addChild(this.hudLayer)
-    if (this.apprenticeShelf) {
-      stage.addChild(this.apprenticeShelf.container)
+    for (const a of this.apprenticeShelves) {
+      stage.addChild(a.container)
     }
   }
 
@@ -375,7 +404,7 @@ export class Game {
 
     this.physics.rebuildWalls(this.width, this.height, this.isDraining)
     this.shelf.rebuild(this.width, this.height)
-    this.apprenticeShelf?.resize(this.width)
+    for (const a of this.apprenticeShelves) a.resize(this.width)
     this.positionCensus()
   }
 
@@ -463,10 +492,40 @@ export class Game {
       const words = new Set(Object.keys(data))
       this.shelf.loadDictionary(words)
       this.shelf.discoveredWords = this.economy.discoveredWords
+      this.buildFamilyMap()
 
       console.log(`Dictionary loaded: ${words.size} words`)
     } catch {
       console.warn('Dictionary not found -- shelf validation disabled')
+    }
+  }
+
+  /** Group every dictionary word by its root field so Imprimatur can expand families in O(1). */
+  private buildFamilyMap() {
+    this.familyMap.clear()
+    for (const word in this.dictionary) {
+      const root = this.dictionary[word]!.root
+      let family = this.familyMap.get(root)
+      if (!family) {
+        family = []
+        this.familyMap.set(root, family)
+      }
+      family.push(word)
+    }
+  }
+
+  /**
+   * Imprimatur hook — called after every scored word (player submit or apprentice).
+   * Silently discovers the submitted word's family members if the upgrade is owned.
+   */
+  private expandFamily(root: string) {
+    if (!this.unlockedUniques.has('imprimatur')) return
+    const family = this.familyMap.get(root)
+    if (!family) return
+    const added = this.economy.discoverFamily(family)
+    if (added.length > 0) {
+      this.hud.showFamilyFlash(added.length)
+      this.checkMilestones()
     }
   }
 
@@ -495,7 +554,10 @@ export class Game {
   }
 
   checkMilestones() {
-    const reached = milestoneReached(this.economy.totalInkEarned)
+    const reached = milestoneReached(
+      this.economy.discoveredWords.size,
+      Object.keys(this.dictionary).length,
+    )
     if (reached && reached !== this.highestMilestone) {
       this.highestMilestone = reached
       this.hud.showMilestone(reached)
@@ -570,8 +632,27 @@ export class Game {
     if (!this.economy.spendInk(def.cost)) return
     this.unlockedUniques.add(id)
     this.applyUniqueUpgrade(id)
+    if (id === 'imprimatur') this.runImprimaturSweep()
     saveState(this.buildSaveState())
     this.renderShopUI()
+  }
+
+  /**
+   * One-shot retroactive family expansion that fires when Imprimatur is first
+   * purchased. Every already-discovered root releases its full family into the
+   * discovered set. Purchase-time only — does not replay on reload.
+   */
+  private runImprimaturSweep() {
+    let total = 0
+    for (const root of this.economy.discoveredRoots) {
+      const family = this.familyMap.get(root)
+      if (!family) continue
+      total += this.economy.discoverFamily(family).length
+    }
+    if (total > 0) {
+      this.hud.showImprimaturSweep(total)
+      this.checkMilestones()
+    }
   }
 
   applyUniqueUpgrade(id: UniqueUpgrade) {
@@ -580,42 +661,97 @@ export class Game {
         this.shelf.wordCheckEnabled = true
         break
       case 'apprenticeShelf':
-        if (!this.apprenticeShelf) {
-          this.apprenticeShelf = new ApprenticeShelf({
-            getLetters: () => this.letters,
-            removeLetter: (letter) => {
-              this.physics.remove(letter.id)
-              const idx = this.letters.indexOf(letter)
-              if (idx >= 0) this.letters.splice(idx, 1)
-              this.letterMap.delete(letter.id)
-              this.foregroundLetters.delete(letter)
-              this.renderer.removeSprite(letter)
-            },
-            getDiscoveredWords: () => this.economy.discoveredWords,
-            getDictionary: () => this.dictionary,
-            onWordAssembled: (word) => {
-              const entry = this.dictionary[word]
-              const score = this.economy.scoreWord(word, [], entry)
-              this.hud.showScore(score)
-              this.checkMilestones()
-            },
-          })
-          this.apprenticeShelf.maxLength = getUpgradeValue(
-            'apprenticeShelfWidth',
-            this.upgradeLevels.apprenticeShelfWidth,
-          )
-          this.apprenticeShelf.assemblyMs =
-            getUpgradeValue('apprenticeSpeed', this.upgradeLevels.apprenticeSpeed) * 1000
-          this.apprenticeShelf.resize(this.width)
-          this.rebuildSceneGraph()
-        }
+        this.syncApprenticeCount()
         break
       case 'autoDiscovery':
-        if (this.apprenticeShelf) {
-          this.apprenticeShelf.preferHighValue = true
-        }
+        for (const a of this.apprenticeShelves) a.preferHighValue = true
+        break
+      case 'overdrive':
+        this.updateAutoMinerRate()
+        break
+      case 'imprimatur':
+        // Runtime state is just the flag on unlockedUniques; the retroactive
+        // sweep is a purchase-time event handled in buyUniqueUpgrade.
         break
     }
+  }
+
+  /** Build a fresh ApprenticeShelf wired to the game's callbacks. */
+  private createApprentice(): ApprenticeShelf {
+    // Capture `shelf` in a holder so `getBlockedLetters` can exclude self.
+    const holder: { shelf: ApprenticeShelf | null } = { shelf: null }
+    const shelf = new ApprenticeShelf({
+      getLetters: () => this.letters,
+      removeLetter: (letter) => {
+        this.physics.remove(letter.id)
+        const idx = this.letters.indexOf(letter)
+        if (idx >= 0) this.letters.splice(idx, 1)
+        this.letterMap.delete(letter.id)
+        this.foregroundLetters.delete(letter)
+        this.renderer.removeSprite(letter)
+      },
+      getDiscoveredWords: () => this.economy.discoveredWords,
+      getDictionary: () => this.dictionary,
+      getBlockedLetters: () => this.aggregateReservedLetters(holder.shelf),
+      onWordAssembled: (word) => {
+        const entry = this.dictionary[word]
+        const score = this.economy.scoreWord(word, [], entry)
+        this.hud.showScore(score)
+        if (this.unlockedUniques.has('subWordHarvest')) {
+          this.harvestSubWords(word)
+        }
+        this.expandFamily(entry?.root ?? word)
+        this.checkMilestones()
+      },
+    })
+    holder.shelf = shelf
+    shelf.maxLength = getUpgradeValue(
+      'apprenticeShelfWidth',
+      this.upgradeLevels.apprenticeShelfWidth,
+    )
+    shelf.assemblyMs = getUpgradeValue('apprenticeSpeed', this.upgradeLevels.apprenticeSpeed) * 1000
+    shelf.preferHighValue = this.unlockedUniques.has('autoDiscovery')
+    shelf.resize(this.width)
+    return shelf
+  }
+
+  /** Aggregate the letter reservations of every apprentice except `exclude`. */
+  private aggregateReservedLetters(exclude: ApprenticeShelf | null): Map<string, number> {
+    const blocked = new Map<string, number>()
+    for (const a of this.apprenticeShelves) {
+      if (a === exclude) continue
+      for (const [ch, n] of a.getReservedLetters()) {
+        blocked.set(ch, (blocked.get(ch) ?? 0) + n)
+      }
+    }
+    return blocked
+  }
+
+  /**
+   * Spawn / trim apprentice shelves to match the Parallel Presses upgrade value.
+   * No-op until the Apprentice Shelf unique upgrade has been purchased.
+   */
+  private syncApprenticeCount() {
+    if (!this.unlockedUniques.has('apprenticeShelf')) return
+    const target = getUpgradeValue('parallelPresses', this.upgradeLevels.parallelPresses)
+    while (this.apprenticeShelves.length < target) {
+      this.apprenticeShelves.push(this.createApprentice())
+    }
+    while (this.apprenticeShelves.length > target) {
+      const removed = this.apprenticeShelves.pop()
+      if (removed) {
+        removed.container.removeFromParent()
+        removed.destroy()
+      }
+    }
+    this.rebuildSceneGraph()
+  }
+
+  /** Compute and apply the auto-miner rate from its tiered level plus Press Overdrive. */
+  private updateAutoMinerRate() {
+    const base = getUpgradeValue('autoMiner', this.upgradeLevels.autoMiner)
+    const multiplier = this.unlockedUniques.has('overdrive') ? 2 : 1
+    this.autoMiner.rate = base * multiplier
   }
 
   applyUpgrade(track: UpgradeTrack) {
@@ -633,17 +769,19 @@ export class Game {
         this.economy.letterMinedInk = value
         break
       case 'autoMiner':
-        this.autoMiner.rate = value
+        this.updateAutoMinerRate()
         break
       case 'apprenticeShelfWidth':
-        if (this.apprenticeShelf) {
-          this.apprenticeShelf.maxLength = value
-        }
+        for (const a of this.apprenticeShelves) a.maxLength = value
         break
       case 'apprenticeSpeed':
-        if (this.apprenticeShelf) {
-          this.apprenticeShelf.assemblyMs = value * 1000
-        }
+        for (const a of this.apprenticeShelves) a.assemblyMs = value * 1000
+        break
+      case 'scribesBalance':
+        this.autoMiner.setBalanceBlend(value)
+        break
+      case 'parallelPresses':
+        this.syncApprenticeCount()
         break
     }
   }
@@ -693,6 +831,48 @@ export class Game {
     this.dumpShelfLetters(this.shelf.letters.length - 1)
   }
 
+  /** Alchemy: every 2s, remove one of the most-common basin letters and spawn a rare one. */
+  updateAlchemy(dt: number) {
+    if (!this.unlockedUniques.has('alchemy')) return
+    this.alchemyTimer += dt
+    if (this.alchemyTimer < 2) return
+    this.alchemyTimer = 0
+
+    if (this.letters.length === 0) return
+
+    const counts = new Map<string, number>()
+    for (const letter of this.letters) {
+      const c = letter.char.toLowerCase()
+      counts.set(c, (counts.get(c) ?? 0) + 1)
+    }
+
+    let topChar: string | null = null
+    let topCount = 0
+    for (const [ch, count] of counts) {
+      if (count > topCount) {
+        topCount = count
+        topChar = ch
+      }
+    }
+    if (!topChar) return
+
+    const victim = this.letters.find((l) => l.char.toLowerCase() === topChar)
+    if (!victim) return
+
+    this.physics.remove(victim.id)
+    const idx = this.letters.indexOf(victim)
+    if (idx >= 0) this.letters.splice(idx, 1)
+    this.letterMap.delete(victim.id)
+    this.foregroundLetters.delete(victim)
+    this.renderer.removeSprite(victim)
+
+    const rarePool = ['j', 'x', 'q', 'z']
+    const rare = rarePool[Math.floor(Math.random() * rarePool.length)]!
+    const x = this.width * (0.1 + Math.random() * 0.8)
+    const y = -30 - Math.random() * 40
+    this.spawnLetter(rare, x, y)
+  }
+
   basinShake() {
     const now = performance.now()
     if (now - this.lastShakeTime < 3000) return
@@ -729,6 +909,7 @@ export class Game {
       if (this.unlockedUniques.has('subWordHarvest')) {
         this.harvestSubWords(normalized)
       }
+      this.expandFamily(entry?.root ?? normalized)
       this.checkMilestones()
       this.renderShopUI()
       this.sound.playStamp()
@@ -1025,7 +1206,7 @@ export class Game {
     this.overflowBarFill.roundRect(barX, barY, barWidth * ratio, barHeight, 4)
     this.overflowBarFill.fill(isOver ? COLORS.error : COLORS.valid)
 
-    this.overflowBarText.text = `${count} / ${max}`
+    this.overflowBarText.text = `${count.toLocaleString()} / ${max.toLocaleString()}`
     this.overflowBarText.position.set(barX + barWidth / 2, barY + barHeight / 2)
 
     if (this.overflowCountdown > 0) {
@@ -1058,7 +1239,8 @@ export class Game {
     this.lastTime = now
 
     this.autoMiner.update(frameDt)
-    this.apprenticeShelf?.update(frameDt)
+    for (const a of this.apprenticeShelves) a.update(frameDt)
+    this.updateAlchemy(frameDt)
     this.flushSpawnQueue()
     if (now - this.lastShopRefresh > 500) {
       this.lastShopRefresh = now
@@ -1164,9 +1346,13 @@ export class Game {
     // Economy HUD
     this.hud.render(this.width, this.height)
 
-    // Apprentice assembly bench — stacks above the overflow HUD if it's showing
-    const apprenticeAnchor =
+    // Apprentice assembly benches — stack vertically above the overflow HUD (or shelf)
+    const BENCH_HEIGHT = 72 // matches apprentice-shelf bench box + a small gap
+    let apprenticeAnchor =
       this.overflowTopY !== null ? this.overflowTopY - 8 : this.shelf.rect.y - 12
-    this.apprenticeShelf?.render(apprenticeAnchor)
+    for (const a of this.apprenticeShelves) {
+      a.render(apprenticeAnchor)
+      apprenticeAnchor -= BENCH_HEIGHT
+    }
   }
 }
