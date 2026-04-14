@@ -74,27 +74,48 @@ export class MiningPrompt {
     return words.join(' ')
   }
 
-  private buildLines(screenWidth: number): PromptLine[] {
+  /**
+   * Build fresh lines from new markov text. If the last existing line is fully
+   * unmined, include its text so the new content flows into the remaining space
+   * rather than starting on a visible "paragraph break."
+   */
+  private buildLines(screenWidth: number): { lines: PromptLine[]; replaceLastLine: boolean } {
     const maxWidth = screenWidth - MINING.padX * 2
-    const text = this.generateText(40)
+
+    const lastLine = this.lines[this.lines.length - 1]
+    const canReuseLastLine =
+      lastLine !== undefined && lastLine.chars.every((c) => !c.mined)
+
+    const prefix = canReuseLastLine && lastLine ? lastLine.text + ' ' : ''
+    const text = prefix + this.generateText(40)
 
     const prepared = prepareWithSegments(text, PROMPT_FONT)
     const result = layoutWithLines(prepared, maxWidth, MINING.lineHeight)
 
     const lines: PromptLine[] = []
-    let globalIdx = this.totalChars()
+    let globalIdx =
+      canReuseLastLine && lastLine ? lastLine.startIdx : this.totalChars()
+    const prefixChars = canReuseLastLine && lastLine ? lastLine.chars : []
+    let prefixIdx = 0
 
     for (const line of result.lines) {
       const lineText = line.text.replace(/\s+$/, '')
       const chars: PromptChar[] = []
       for (const ch of lineText) {
-        chars.push({ char: ch, mined: false, mineTime: 0, mistakeTime: 0 })
+        // Reuse the existing PromptChar when it matches, so mined/mistake
+        // state carries over across the reflow.
+        if (prefixIdx < prefixChars.length && prefixChars[prefixIdx]!.char === ch) {
+          chars.push(prefixChars[prefixIdx]!)
+          prefixIdx++
+        } else {
+          chars.push({ char: ch, mined: false, mineTime: 0, mistakeTime: 0 })
+        }
       }
       lines.push({ text: lineText, chars, startIdx: globalIdx })
       globalIdx += chars.length
     }
 
-    return lines
+    return { lines, replaceLastLine: canReuseLastLine }
   }
 
   private totalChars(): number {
@@ -184,12 +205,15 @@ export class MiningPrompt {
     const now = performance.now()
 
     if (this.lines.length === 0) {
-      this.lines = this.buildLines(screenWidth)
+      const initial = this.buildLines(screenWidth)
+      this.lines = initial.lines
     }
 
     const cursorInfo = this.charAtGlobal(this.cursorPos)
     if (cursorInfo && cursorInfo.lineIdx >= this.lines.length - MINING.maxVisibleLines) {
-      this.lines.push(...this.buildLines(screenWidth))
+      const { lines: newLines, replaceLastLine } = this.buildLines(screenWidth)
+      if (replaceLastLine) this.lines.pop()
+      this.lines.push(...newLines)
     }
 
     const cursorLineIdx = cursorInfo?.lineIdx ?? 0

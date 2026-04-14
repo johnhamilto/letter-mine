@@ -64,7 +64,7 @@ export const MINING = {
   padX: 60,
   firstLineY: 120,
   lineHeight: 90,
-  maxVisibleLines: 1,
+  maxVisibleLines: 2,
   mineAnimMs: 180,
   mistakeAnimMs: 250,
 } as const
