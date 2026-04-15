@@ -227,11 +227,6 @@ export class LetterRenderer {
     }
   }
 
-  /** Get the sprite for a letter (may be null if not yet created). */
-  getSprite(letter: LetterBody): Sprite | undefined {
-    return this.spriteMap.get(letter)?.sprite
-  }
-
   /**
    * Update sprite position/rotation from physics state, with optional glow.
    * Short-circuits Pixi property writes when values are unchanged — settled bodies

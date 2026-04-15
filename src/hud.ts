@@ -57,9 +57,9 @@ export class Hud {
   // DOM HUD elements
   private inkEl: HTMLDivElement
 
-  // Memoized last-written DOM values — avoid redundant writes that trigger layout/style recalc
-  private lastInkText = ''
-  private lastDiscText = ''
+  // Memoized last-rendered values — short-circuit upstream of toLocaleString/DOM
+  private lastInk = -1
+  private lastDisc = -1
   private lastBarScale = ''
   private lastBarLabel = ''
   private lastBarTooltip = ''
@@ -278,20 +278,16 @@ export class Hud {
 
   private renderInkCounter() {
     const ink = Math.floor(this.economy.ink)
-    const text = `${ink.toLocaleString()} Ink`
-    if (text !== this.lastInkText) {
-      this.inkEl.textContent = text
-      this.lastInkText = text
-    }
+    if (ink === this.lastInk) return
+    this.lastInk = ink
+    this.inkEl.textContent = `${ink.toLocaleString()} Ink`
   }
 
   private renderDiscoveredCount() {
     const count = this.economy.discoveredWords.size
-    const text = `${count.toLocaleString()} discovered`
-    if (text !== this.lastDiscText) {
-      this.dictButton.textContent = text
-      this.lastDiscText = text
-    }
+    if (count === this.lastDisc) return
+    this.lastDisc = count
+    this.dictButton.textContent = `${count.toLocaleString()} discovered`
   }
 
   private setBar(scale: string, label: string, tooltip: string) {
