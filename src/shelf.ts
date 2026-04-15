@@ -5,6 +5,7 @@
 
 import { Container, Graphics, Text } from 'pixi.js'
 import { SCALE, COLORS, SHELF } from './constants'
+import { makeText } from './pixi-text'
 import type { ShelfLetter, WordStatus } from './types'
 
 interface SubmitResult {
@@ -361,15 +362,11 @@ export class Shelf {
     })
 
     if (this.letters.length === 0 && !this.siphonActive) {
-      this.placeholderText = new Text({
-        text: 'click or drag letters here',
-        style: {
-          fontFamily: 'Playfair Display',
-          fontSize: 18,
-          fontStyle: 'italic',
-          fill: COLORS.muted,
-          align: 'center',
-        },
+      this.placeholderText = makeText('click or drag letters here', {
+        fontSize: 18,
+        fontStyle: 'italic',
+        fill: COLORS.muted,
+        align: 'center',
       })
       this.placeholderText.anchor.set(0.5, 0.5)
       this.placeholderText.position.set(r.x + r.w / 2, r.y + r.h / 2)
@@ -384,15 +381,11 @@ export class Shelf {
       this.submitBtn.fill(COLORS.valid)
       this.container.addChild(this.submitBtn)
 
-      this.submitBtnText = new Text({
-        text: 'Submit',
-        style: {
-          fontFamily: 'Playfair Display',
-          fontSize: 14,
-          fontWeight: 'bold',
-          fill: COLORS.shelfBg,
-          align: 'center',
-        },
+      this.submitBtnText = makeText('Submit', {
+        fontSize: 14,
+        fontWeight: 'bold',
+        fill: COLORS.shelfBg,
+        align: 'center',
       })
       this.submitBtnText.anchor.set(0.5, 0.5)
       this.submitBtnText.position.set(this.btnX + this.btnW / 2, this.btnY + this.btnH / 2)
@@ -425,15 +418,11 @@ export class Shelf {
           fill = sl.isUpper ? COLORS.inkDark : COLORS.ink
         }
 
-        const letterText = new Text({
-          text: sl.char,
-          style: {
-            fontFamily: 'Playfair Display',
-            fontSize,
-            fontWeight: 'bold',
-            fill,
-            align: 'center',
-          },
+        const letterText = makeText(sl.char, {
+          fontSize,
+          fontWeight: 'bold',
+          fill,
+          align: 'center',
         })
         letterText.anchor.set(0.5, 0.5)
         letterText.position.set(pos.x + shakeX, pos.y)
@@ -460,15 +449,11 @@ export class Shelf {
           ? 1
           : 1 - (errorElapsed - ERROR_FLASH_MS) / (TOOLTIP_MS - ERROR_FLASH_MS)
 
-      this.errorText = new Text({
-        text: this.errorMessage,
-        style: {
-          fontFamily: 'Playfair Display',
-          fontSize: 13,
-          fontWeight: 'bold',
-          fill: COLORS.error,
-          align: 'center',
-        },
+      this.errorText = makeText(this.errorMessage, {
+        fontSize: 13,
+        fontWeight: 'bold',
+        fill: COLORS.error,
+        align: 'center',
       })
       this.errorText.anchor.set(0.5, 1)
       this.errorText.position.set(r.x + r.w / 2, r.y + r.h + 18)

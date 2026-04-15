@@ -18,6 +18,7 @@ import { createDevPanel } from './debug'
 import { MarkovGenerator, type MarkovData } from './markov'
 import { SoundManager } from './sound'
 import { PerfMonitor } from './perf-monitor'
+import { makeText } from './pixi-text'
 import { SCALE, COLORS, FIXED_DT, MAX_SUBSTEPS, FOREGROUND_MS, BASIN, MINING } from './constants'
 import type {
   GlyphData,
@@ -171,27 +172,19 @@ export class Game {
     app.stage.addChild(this.bgLayer)
 
     // Overflow HUD text objects
-    this.overflowBarText = new Text({
-      text: '',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 11,
-        fontWeight: 'bold',
-        fill: COLORS.ink,
-        align: 'center',
-      },
+    this.overflowBarText = makeText('', {
+      fontSize: 11,
+      fontWeight: 'bold',
+      fill: COLORS.ink,
+      align: 'center',
     })
     this.overflowBarText.anchor.set(0.5, 0.5)
 
-    this.overflowMessageText = new Text({
-      text: '',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 18,
-        fontWeight: 'bold',
-        fill: COLORS.error,
-        align: 'center',
-      },
+    this.overflowMessageText = makeText('', {
+      fontSize: 18,
+      fontWeight: 'bold',
+      fill: COLORS.error,
+      align: 'center',
     })
     this.overflowMessageText.anchor.set(0.5, 1)
 

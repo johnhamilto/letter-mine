@@ -5,6 +5,7 @@
 
 import { Container, Graphics, Text } from 'pixi.js'
 import { COLORS } from './constants'
+import { makeText } from './pixi-text'
 import type { ApprenticeWorkerInMsg, ApprenticeWorkerOutMsg } from './apprentice-worker'
 import type { DictionaryEntry } from './types'
 import type { LetterBody } from './types'
@@ -84,15 +85,11 @@ export class ApprenticeShelf {
     this.container.addChild(this.bg)
     this.container.addChild(this.slotsGfx)
 
-    this.label = new Text({
-      text: 'APPRENTICE',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 10,
-        fontWeight: 'bold',
-        fill: COLORS.muted,
-        letterSpacing: 1.5,
-      },
+    this.label = makeText('APPRENTICE', {
+      fontSize: 10,
+      fontWeight: 'bold',
+      fill: COLORS.muted,
+      letterSpacing: 1.5,
     })
     this.container.addChild(this.label)
 
@@ -330,14 +327,10 @@ export class ApprenticeShelf {
     for (let i = 0; i < lettersArrived; i++) {
       const ch = word[i]
       if (!ch) continue
-      const t = new Text({
-        text: ch.toUpperCase(),
-        style: {
-          fontFamily: 'Playfair Display',
-          fontSize: 20,
-          fontWeight: 'bold',
-          fill: COLORS.ink,
-        },
+      const t = makeText(ch.toUpperCase(), {
+        fontSize: 20,
+        fontWeight: 'bold',
+        fill: COLORS.ink,
       })
       t.anchor.set(0.5, 0.5)
       t.x = padX + i * (slotW + slotGap) + slotW / 2

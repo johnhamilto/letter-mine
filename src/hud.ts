@@ -2,6 +2,7 @@
 
 import { Container, Graphics, Text } from 'pixi.js'
 import { COLORS, SCORING } from './constants'
+import { makeText } from './pixi-text'
 import type { Economy } from './economy'
 import { getMilestoneDef, MILESTONES } from './upgrades'
 import type { MilestoneName, ScoreBonus, ScoreResult } from './types'
@@ -115,27 +116,19 @@ export class Hud {
     this.milestoneBg = new Graphics()
     this.milestoneContainer.addChild(this.milestoneBg)
 
-    this.milestoneLabelText = new Text({
-      text: 'MILESTONE REACHED',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 13,
-        fill: COLORS.muted,
-        align: 'center',
-      },
+    this.milestoneLabelText = makeText('MILESTONE REACHED', {
+      fontSize: 13,
+      fill: COLORS.muted,
+      align: 'center',
     })
     this.milestoneLabelText.anchor.set(0.5, 0.5)
     this.milestoneContainer.addChild(this.milestoneLabelText)
 
-    this.milestoneNameText = new Text({
-      text: '',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 36,
-        fontWeight: 'bold',
-        fill: COLORS.ink,
-        align: 'center',
-      },
+    this.milestoneNameText = makeText('', {
+      fontSize: 36,
+      fontWeight: 'bold',
+      fill: COLORS.ink,
+      align: 'center',
     })
     this.milestoneNameText.anchor.set(0.5, 0.5)
     this.milestoneContainer.addChild(this.milestoneNameText)
@@ -216,15 +209,11 @@ export class Hud {
     }
 
     if (!this.familyFlashText) {
-      this.familyFlashText = new Text({
-        text: '',
-        style: {
-          fontFamily: 'Playfair Display',
-          fontSize: 16,
-          fontStyle: 'italic',
-          fill: COLORS.valid,
-          align: 'center',
-        },
+      this.familyFlashText = makeText('', {
+        fontSize: 16,
+        fontStyle: 'italic',
+        fill: COLORS.valid,
+        align: 'center',
       })
       this.familyFlashText.anchor.set(0.5, 0)
       this.container.addChild(this.familyFlashText)
@@ -343,27 +332,19 @@ export class Hud {
       (f) => now - f.startTime < FLASH_STACK_WINDOW_MS,
     ).length
 
-    const mainText = new Text({
-      text: '',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 28,
-        fontWeight: 'bold',
-        fill: score.isRepeat ? COLORS.muted : COLORS.valid,
-        align: 'center',
-      },
+    const mainText = makeText('', {
+      fontSize: 28,
+      fontWeight: 'bold',
+      fill: score.isRepeat ? COLORS.muted : COLORS.valid,
+      align: 'center',
     })
     mainText.anchor.set(0.5, 1)
     this.container.addChild(mainText)
 
-    const bonusText = new Text({
-      text: '',
-      style: {
-        fontFamily: 'Playfair Display',
-        fontSize: 14,
-        fill: COLORS.muted,
-        align: 'center',
-      },
+    const bonusText = makeText('', {
+      fontSize: 14,
+      fill: COLORS.muted,
+      align: 'center',
     })
     bonusText.anchor.set(0.5, 1)
     this.container.addChild(bonusText)
