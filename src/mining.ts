@@ -5,7 +5,7 @@
  */
 
 import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
-import { Container, Sprite, Texture } from 'pixi.js'
+import { CanvasSource, Container, Sprite, Texture } from 'pixi.js'
 import { COLORS, MINING, PROMPT_FONT } from './constants'
 import type { MarkovGenerator } from './markov'
 
@@ -48,8 +48,11 @@ export class MiningPrompt {
   private sprite: Sprite
   private canvas: OffscreenCanvas
   private ctx: OffscreenCanvasRenderingContext2D
+  private source: CanvasSource
   private currentWidth = 0
   private dpr = window.devicePixelRatio
+  /** True when the canvas needs repainting + GPU re-upload. */
+  private dirty = true
 
   constructor(options: MiningOptions) {
     this.onLetterMined = options.onLetterMined
@@ -60,7 +63,10 @@ export class MiningPrompt {
     if (!ctx) throw new Error('Cannot create mining canvas')
     this.ctx = ctx
 
-    this.sprite = new Sprite()
+    // Single CanvasSource wrapping our OffscreenCanvas. We mutate the canvas in place
+    // and call source.update() to flag a re-upload — no per-frame texture allocation.
+    this.source = new CanvasSource({ resource: this.canvas, resolution: this.dpr })
+    this.sprite = new Sprite(new Texture({ source: this.source }))
     this.sprite.position.set(0, 0)
     this.container.addChild(this.sprite)
 
@@ -151,6 +157,7 @@ export class MiningPrompt {
         pc.mined = true
         pc.mineTime = now
         this.cursorPos++
+        this.dirty = true
         this.onKeystroke?.()
       }
       return
@@ -166,9 +173,11 @@ export class MiningPrompt {
       }
 
       this.cursorPos++
+      this.dirty = true
       this.onKeystroke?.()
     } else {
       pc.mistakeTime = now
+      this.dirty = true
       this.onKeystroke?.()
     }
   }
@@ -185,6 +194,7 @@ export class MiningPrompt {
       pc.mined = true
       pc.mineTime = now
       this.cursorPos++
+      this.dirty = true
       this.onKeystroke?.()
       return
     }
@@ -196,6 +206,7 @@ export class MiningPrompt {
       this.onLetterMined(pc.char, pos.x, pos.y)
     }
     this.cursorPos++
+    this.dirty = true
     this.onKeystroke?.()
   }
 
@@ -230,7 +241,25 @@ export class MiningPrompt {
       this.currentWidth = screenWidth
       this.canvas.width = screenWidth * dpr
       this.canvas.height = canvasHeight * dpr
+      this.source.resize(screenWidth, canvasHeight, dpr)
+      this.dirty = true
     }
+
+    // Scroll animation, mistake animations, and cursor blink would all need this
+    // to redraw — for now redraw whenever the scroll is in motion or any mistake is
+    // animating. Steady-state typing-only redraws are flagged via this.dirty.
+    if (Math.abs(targetScrollY - this.scrollOffset) > 0.5) this.dirty = true
+    for (const line of this.lines) {
+      for (const c of line.chars) {
+        if (c.mistakeTime > 0 && now - c.mistakeTime < MINING.mistakeAnimMs) {
+          this.dirty = true
+          break
+        }
+      }
+      if (this.dirty) break
+    }
+
+    if (!this.dirty) return
 
     const ctx = this.ctx
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
@@ -309,18 +338,13 @@ export class MiningPrompt {
 
     ctx.restore()
 
-    // Update sprite texture from canvas (with DPR resolution for sharpness)
-    const oldTexture = this.sprite.texture
-    if (oldTexture !== Texture.EMPTY) {
-      oldTexture.destroy(true)
-    }
-    this.sprite.texture = Texture.from({
-      resource: this.canvas.transferToImageBitmap(),
-      resolution: dpr,
-    })
+    // Flag the GPU upload — Pixi will re-upload the canvas on next render.
+    this.source.update()
+    this.dirty = false
   }
 
   destroy() {
     window.removeEventListener('keydown', this.handleKey)
+    this.source.destroy()
   }
 }
