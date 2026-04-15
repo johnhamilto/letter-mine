@@ -48,7 +48,7 @@ export class MiningPrompt {
   private sprite: Sprite
   private canvas: OffscreenCanvas
   private ctx: OffscreenCanvasRenderingContext2D
-  private source: CanvasSource | null = null
+  private source: CanvasSource
   private currentWidth = 0
   private dpr = window.devicePixelRatio
 
@@ -107,8 +107,9 @@ export class MiningPrompt {
       for (const ch of lineText) {
         // Reuse the existing PromptChar when it matches, so mined/mistake
         // state carries over across the reflow.
-        if (prefixIdx < prefixChars.length && prefixChars[prefixIdx]!.char === ch) {
-          chars.push(prefixChars[prefixIdx]!)
+        const existing = prefixChars[prefixIdx]
+        if (existing && existing.char === ch) {
+          chars.push(existing)
           prefixIdx++
         } else {
           chars.push({ char: ch, mined: false, mineTime: 0, mistakeTime: 0 })
@@ -318,7 +319,7 @@ export class MiningPrompt {
     // checks if the canvas resized and either re-resizes (emitting "change" with
     // a new resourceId) or just emits "update" — both trigger a re-upload on the
     // next render.
-    this.source!.update()
+    this.source.update()
   }
 
   destroy() {

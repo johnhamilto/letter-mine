@@ -28,11 +28,11 @@ function computeTierStats(
   dictionary: Record<string, DictionaryEntry>,
   discoveredWords: Set<string>,
 ): TierStats[] {
-  const tiers: TierStats[] = Array.from({ length: 5 }, (_, i) => ({
+  const tiers: TierStats[] = TIER_NAMES.map((name, i) => ({
     tier: i,
-    name: TIER_NAMES[i]!,
-    multiplier: SCORING.tierMultipliers[i]!,
-    color: TIER_COLORS[i]!,
+    name,
+    multiplier: SCORING.tierMultipliers[i] ?? 1,
+    color: TIER_COLORS[i] ?? '#2C2416',
     discovered: [],
     totalCount: 0,
   }))

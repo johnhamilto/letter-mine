@@ -14,6 +14,8 @@
  *   dist/dictionary.json
  */
 
+import { type DictionaryEntry } from "../src/types"
+
 const DATA_DIR = new URL("../data", import.meta.url).pathname
 const DIST_DIR = new URL("../dist", import.meta.url).pathname
 
@@ -25,15 +27,6 @@ interface AffixRule {
   strip: string
   add: string
   condition: RegExp | null
-}
-
-interface WordEntry {
-  freq: number
-  tier: number // 0=legendary, 1=rare, 2=uncommon, 3=common, 4=universal
-  root: string
-  pos: string[]
-  syl: number
-  rhyme: string | null
 }
 
 // ── Affix expansion ──
@@ -197,7 +190,6 @@ async function loadCmu(path: string): Promise<Map<string, CmuEntry>> {
     const rawWord = line.slice(0, firstSpace).replace(/\(\d+\)$/, "").trim().toLowerCase()
     if (!rawWord || !/^[a-z]+$/.test(rawWord)) continue
 
-    // skip alternate pronunciations if we already have one
     if (entries.has(rawWord)) continue
 
     const phonemes = line.slice(firstSpace).trim().split(/\s+/)
@@ -305,7 +297,7 @@ console.log(`  Family map: ${familyMap.size.toLocaleString()} expanded forms in 
 console.log("\nMerging into unified dictionary...")
 const t2 = performance.now()
 
-const dictionary: Record<string, WordEntry> = {}
+const dictionary: Record<string, DictionaryEntry> = {}
 const stats = { total: 0, withFreq: 0, withCmu: 0, withPos: 0, withFamily: 0, tiers: [0, 0, 0, 0, 0] }
 
 for (const word of scowlWords) {

@@ -117,7 +117,10 @@ export class Game {
 
   constructor(app: Application, physics: PhysicsProxy, glyphs: Record<string, GlyphData>) {
     this.app = app
-    this.canvas = app.canvas as HTMLCanvasElement
+    if (!(app.canvas instanceof HTMLCanvasElement)) {
+      throw new Error('Pixi Application must be initialized with an HTMLCanvasElement')
+    }
+    this.canvas = app.canvas
     this.physics = physics
     this.glyphs = glyphs
 
@@ -229,7 +232,11 @@ export class Game {
           const undiscovered = allWords.filter((w) => !this.economy.discoveredWords.has(w))
           for (let i = undiscovered.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1))
-            ;[undiscovered[i], undiscovered[j]] = [undiscovered[j]!, undiscovered[i]!]
+            const ai = undiscovered[i]
+            const aj = undiscovered[j]
+            if (ai === undefined || aj === undefined) continue
+            undiscovered[i] = aj
+            undiscovered[j] = ai
           }
           const batch = undiscovered.slice(0, count)
           for (const word of batch) {
@@ -277,8 +284,7 @@ export class Game {
     // Auto-miner — spawns frequency-weighted letters when idle, biased by Scribe's Balance
     this.autoMiner = new AutoMiner(
       (char, isFirstInBatch) => {
-        const x = this.width * (0.1 + Math.random() * 0.8)
-        const y = -30 - Math.random() * 40
+        const { x, y } = this.randomTopSpawnPos()
         this.spawnLetter(char, x, y)
         this.economy.creditLetterMined()
         // One keyclick per strike — Type Foundry batches would otherwise pile up
@@ -286,14 +292,7 @@ export class Game {
         if (isFirstInBatch) this.sound.playKeyClick()
         this.pulseCensus(char)
       },
-      () => {
-        const counts = new Map<string, number>()
-        for (const letter of this.letters) {
-          const c = letter.char.toLowerCase()
-          counts.set(c, (counts.get(c) ?? 0) + 1)
-        }
-        return counts
-      },
+      () => this.countBasinLetters(),
     )
 
     this.autoMiner.shouldPause = () =>
@@ -331,12 +330,7 @@ export class Game {
     )
     this.drag.onShiftClickLetter = (letter) => {
       if (!this.unlockedUniques.has('compositorsPick')) return false
-      this.physics.remove(letter.id)
-      const idx = this.letters.indexOf(letter)
-      if (idx >= 0) this.letters.splice(idx, 1)
-      this.letterMap.delete(letter.id)
-      this.foregroundLetters.delete(letter)
-      this.renderer.removeSprite(letter)
+      this.removeLetter(letter)
       return true
     }
 
@@ -475,19 +469,16 @@ export class Game {
     }
 
     this.ensureCensusEl()
-    this.censusEl!.style.display = ''
+    if (this.censusEl) this.censusEl.style.display = ''
 
-    const counts = new Map<string, number>()
-    for (const letter of this.letters) {
-      const lc = letter.char.toLowerCase()
-      counts.set(lc, (counts.get(lc) ?? 0) + 1)
-    }
+    const counts = this.countBasinLetters()
 
     const chars = 'abcdefghijklmnopqrstuvwxyz'
     for (const c of chars) {
       const n = counts.get(c) ?? 0
-      const item = this.censusItemEls[c]!
-      const countEl = this.censusCountEls[c]!
+      const item = this.censusItemEls[c]
+      const countEl = this.censusCountEls[c]
+      if (!item || !countEl) continue
       if (countEl.textContent !== String(n)) countEl.textContent = String(n)
       item.classList.toggle('lc-zero', n === 0)
     }
@@ -499,6 +490,34 @@ export class Game {
 
   restoreFloor() {
     this.physics.restoreFloor(this.height)
+  }
+
+  /** Remove a letter from physics + all main-thread tracking structures. */
+  private removeLetter(letter: LetterBody) {
+    this.physics.remove(letter.id)
+    const idx = this.letters.indexOf(letter)
+    if (idx >= 0) this.letters.splice(idx, 1)
+    this.letterMap.delete(letter.id)
+    this.foregroundLetters.delete(letter)
+    this.renderer.removeSprite(letter)
+  }
+
+  /** Build a lowercase char → count map from the current basin contents. */
+  private countBasinLetters(): Map<string, number> {
+    const counts = new Map<string, number>()
+    for (const letter of this.letters) {
+      const c = letter.char.toLowerCase()
+      counts.set(c, (counts.get(c) ?? 0) + 1)
+    }
+    return counts
+  }
+
+  /** Random spawn position above the basin, horizontally spread across 80% of the canvas. */
+  private randomTopSpawnPos(): { x: number; y: number } {
+    return {
+      x: this.width * (0.1 + Math.random() * 0.8),
+      y: -30 - Math.random() * 40,
+    }
   }
 
   async loadDictionary() {
@@ -521,8 +540,8 @@ export class Game {
   /** Group every dictionary word by its root field so Imprimatur can expand families in O(1). */
   private buildFamilyMap() {
     this.familyMap.clear()
-    for (const word in this.dictionary) {
-      const root = this.dictionary[word]!.root
+    for (const [word, entry] of Object.entries(this.dictionary)) {
+      const root = entry.root
       let family = this.familyMap.get(root)
       if (!family) {
         family = []
@@ -556,7 +575,7 @@ export class Game {
         `Markov chain loaded: ${data.starts.length} starts, ${Object.keys(data.transitions).length} transitions`,
       )
     } catch {
-      console.warn('Markov data not found — using fallback word list')
+      console.warn('Markov data not found — mining prompt will be empty')
     }
   }
 
@@ -728,14 +747,7 @@ export class Game {
     const holder: { shelf: ApprenticeShelf | null } = { shelf: null }
     const shelf = new ApprenticeShelf({
       getLetters: () => this.letters,
-      removeLetter: (letter) => {
-        this.physics.remove(letter.id)
-        const idx = this.letters.indexOf(letter)
-        if (idx >= 0) this.letters.splice(idx, 1)
-        this.letterMap.delete(letter.id)
-        this.foregroundLetters.delete(letter)
-        this.renderer.removeSprite(letter)
-      },
+      removeLetter: (letter) => this.removeLetter(letter),
       getDiscoveredWords: () => this.economy.discoveredWords,
       getDictionary: () => this.dictionary,
       getBlockedLetters: () => this.aggregateReservedLetters(holder.shelf),
@@ -882,12 +894,7 @@ export class Game {
     const placed = this.shelf.placeLetter(best.char, best.isUpper)
     if (!placed) return
 
-    this.physics.remove(best.id)
-    const idx = this.letters.indexOf(best)
-    if (idx >= 0) this.letters.splice(idx, 1)
-    this.letterMap.delete(best.id)
-    this.foregroundLetters.delete(best)
-    this.renderer.removeSprite(best)
+    this.removeLetter(best)
   }
 
   siphonBackspace() {
@@ -912,11 +919,7 @@ export class Game {
     if (this.alchemyTimer < 2) return
     this.alchemyTimer = 0
 
-    const counts = new Map<string, number>()
-    for (const letter of this.letters) {
-      const c = letter.char.toLowerCase()
-      counts.set(c, (counts.get(c) ?? 0) + 1)
-    }
+    const counts = this.countBasinLetters()
 
     for (let n = 0; n < conversions; n++) {
       if (this.letters.length === 0) return
@@ -955,18 +958,12 @@ export class Game {
       const victim = this.letters.find((l) => l.char.toLowerCase() === topChar)
       if (!victim) return
 
-      this.physics.remove(victim.id)
-      const idx = this.letters.indexOf(victim)
-      if (idx >= 0) this.letters.splice(idx, 1)
-      this.letterMap.delete(victim.id)
-      this.foregroundLetters.delete(victim)
-      this.renderer.removeSprite(victim)
+      this.removeLetter(victim)
 
       counts.set(topChar, topCount - 1)
       counts.set(recipient, (counts.get(recipient) ?? 0) + 1)
 
-      const x = this.width * (0.1 + Math.random() * 0.8)
-      const y = -30 - Math.random() * 40
+      const { x, y } = this.randomTopSpawnPos()
       this.spawnLetter(recipient, x, y)
     }
   }
@@ -1056,7 +1053,10 @@ export class Game {
     this.shelf.clear()
     const now = performance.now()
     for (let i = 0; i < letters.length; i++) {
-      this.spawnLetter(letters[i]!.char, positions[i]!.x, positions[i]!.y)
+      const letter = letters[i]
+      const pos = positions[i]
+      if (!letter || !pos) continue
+      this.spawnLetter(letter.char, pos.x, pos.y)
     }
     this.pendingForeground = now
   }
@@ -1095,18 +1095,16 @@ export class Game {
     const now = performance.now()
     const word = this.shelf.currentWord()
     const maxSlots = this.shelf.maxSlots
-    const sameShelf =
-      this.ghostCache !== null &&
-      this.ghostCache.word === word &&
-      this.ghostCache.maxSlots === maxSlots
-    if (sameShelf && now - this.lastGhostRefresh < 250) {
-      return this.ghostCache!.chars
+    const cached = this.ghostCache
+    if (
+      cached &&
+      cached.word === word &&
+      cached.maxSlots === maxSlots &&
+      now - this.lastGhostRefresh < 250
+    ) {
+      return cached.chars
     }
-    const basinCounts = new Map<string, number>()
-    for (const letter of this.letters) {
-      const c = letter.char.toLowerCase()
-      basinCounts.set(c, (basinCounts.get(c) ?? 0) + 1)
-    }
+    const basinCounts = this.countBasinLetters()
     const chars = this.shelf.getCompletionChars(basinCounts)
     this.ghostCache = { word, maxSlots, chars }
     this.lastGhostRefresh = now
@@ -1191,29 +1189,28 @@ export class Game {
     const baseAlpha = 0.35
     const spread = 140
 
-    const topGrad = ctx.createLinearGradient(0, 0, 0, spread)
-    topGrad.addColorStop(0, `rgba(192, 57, 43, ${baseAlpha})`)
-    topGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = topGrad
-    ctx.fillRect(0, 0, w, spread)
+    const drawEdge = (
+      gx0: number,
+      gy0: number,
+      gx1: number,
+      gy1: number,
+      rx: number,
+      ry: number,
+      rw: number,
+      rh: number,
+      alpha: number,
+    ) => {
+      const grad = ctx.createLinearGradient(gx0, gy0, gx1, gy1)
+      grad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
+      grad.addColorStop(1, 'rgba(192, 57, 43, 0)')
+      ctx.fillStyle = grad
+      ctx.fillRect(rx, ry, rw, rh)
+    }
 
-    const botGrad = ctx.createLinearGradient(0, h, 0, h - spread)
-    botGrad.addColorStop(0, `rgba(192, 57, 43, ${baseAlpha})`)
-    botGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = botGrad
-    ctx.fillRect(0, h - spread, w, spread)
-
-    const leftGrad = ctx.createLinearGradient(0, 0, spread, 0)
-    leftGrad.addColorStop(0, `rgba(192, 57, 43, ${baseAlpha * 0.6})`)
-    leftGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = leftGrad
-    ctx.fillRect(0, 0, spread, h)
-
-    const rightGrad = ctx.createLinearGradient(w, 0, w - spread, 0)
-    rightGrad.addColorStop(0, `rgba(192, 57, 43, ${baseAlpha * 0.6})`)
-    rightGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = rightGrad
-    ctx.fillRect(w - spread, 0, spread, h)
+    drawEdge(0, 0, 0, spread, 0, 0, w, spread, baseAlpha)
+    drawEdge(0, h, 0, h - spread, 0, h - spread, w, spread, baseAlpha)
+    drawEdge(0, 0, spread, 0, 0, 0, spread, h, baseAlpha * 0.6)
+    drawEdge(w, 0, w - spread, 0, w - spread, 0, spread, h, baseAlpha * 0.6)
 
     const oldTex = this.vignetteSprite.texture
     if (oldTex !== Texture.EMPTY) oldTex.destroy(true)

@@ -92,7 +92,6 @@ function analyzeOverlap(
       console.log(`  Sample missing: ${missingSorted.slice(0, sampleSize).join(", ")}`)
     }
 
-    // extra words in dataset but not in base (just count, we don't care much)
     let extraCount = 0
     for (const word of dataset) {
       if (!base.has(word)) extraCount++

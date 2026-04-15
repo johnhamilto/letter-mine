@@ -317,10 +317,9 @@ export class Hud {
       return
     }
 
+    const currentMs = currentIdx >= 0 ? MILESTONES[currentIdx] : undefined
     const prevThreshold =
-      currentIdx >= 0 && Number.isFinite(MILESTONES[currentIdx]!.wordsRequired)
-        ? MILESTONES[currentIdx]!.wordsRequired
-        : 0
+      currentMs && Number.isFinite(currentMs.wordsRequired) ? currentMs.wordsRequired : 0
     const nextThreshold = Number.isFinite(nextMs.wordsRequired)
       ? nextMs.wordsRequired
       : this.getTotalWords() || Infinity

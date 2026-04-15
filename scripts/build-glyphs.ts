@@ -12,6 +12,7 @@
  */
 
 import opentype from "opentype.js"
+import { type GlyphData } from "../src/types"
 
 const FONT_PATH = `${import.meta.dir}/../public/fonts/PlayfairDisplay.ttf`
 const OUTPUT_PATH = `${import.meta.dir}/../dist/glyphs.json`
@@ -37,15 +38,6 @@ const MAX_ACD_DEPTH = 8
 interface Vec2 {
   x: number
   y: number
-}
-
-interface GlyphData {
-  char: string
-  convexParts: number[][]
-  width: number
-  height: number
-  offsetX: number
-  offsetY: number
 }
 
 // ── Bezier sampling ──

@@ -254,21 +254,21 @@ export class LetterRenderer {
       sprite.alpha = alpha
       entry.lastAlpha = alpha
     }
-    // showGlyphs is a dev toggle — cheap, always apply so flips take effect immediately.
     sprite.visible = this.showGlyphs
 
-    // Glow sprite management — skip position sync when unchanged.
     const existing = this.glowMap.get(letter)
     if (glowColor) {
-      if (!existing || existing.color !== glowColor) {
-        if (existing) {
-          existing.sprite.removeFromParent()
-          existing.sprite.destroy()
+      let entry = existing
+      if (!entry || entry.color !== glowColor) {
+        if (entry) {
+          entry.sprite.removeFromParent()
+          entry.sprite.destroy()
         }
         const tex = this.getGlowTexture(letter.glyph, letter.renderScale, glowColor)
         const glow = new Sprite(tex)
         glow.anchor.set(0.5, 0.5)
-        this.glowMap.set(letter, { sprite: glow, color: glowColor })
+        entry = { sprite: glow, color: glowColor }
+        this.glowMap.set(letter, entry)
         const parent = sprite.parent
         if (parent) {
           const idx = parent.getChildIndex(sprite)
@@ -276,11 +276,10 @@ export class LetterRenderer {
         }
       }
       if (moved || !existing) {
-        const glow = this.glowMap.get(letter)!.sprite
-        glow.position.set(x, y)
-        glow.rotation = rotation
+        entry.sprite.position.set(x, y)
+        entry.sprite.rotation = rotation
       }
-      this.glowMap.get(letter)!.sprite.visible = this.showGlyphs
+      entry.sprite.visible = this.showGlyphs
     } else if (existing) {
       existing.sprite.removeFromParent()
       existing.sprite.destroy()

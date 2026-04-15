@@ -211,10 +211,6 @@ const TIERED_MAP = new Map<UpgradeTrack, TieredUpgradeDef>(TIERED_UPGRADES.map((
 
 const MILESTONE_ORDER: readonly MilestoneName[] = MILESTONES.map((m) => m.name)
 
-export function getTieredDef(track: UpgradeTrack): TieredUpgradeDef | undefined {
-  return TIERED_MAP.get(track)
-}
-
 export function getUpgradeValue(track: UpgradeTrack, level: number): number {
   const def = TIERED_MAP.get(track)
   if (!def) return 0

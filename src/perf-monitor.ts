@@ -25,9 +25,14 @@ function avg(r: Ring): number {
 }
 
 function max(r: Ring): number {
-  if (r.samples.length === 0) return 0
-  let m = r.samples[0]!
-  for (const v of r.samples) if (v > m) m = v
+  let m = 0
+  let seen = false
+  for (const v of r.samples) {
+    if (!seen || v > m) {
+      m = v
+      seen = true
+    }
+  }
   return m
 }
 

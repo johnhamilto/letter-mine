@@ -78,9 +78,6 @@ export class ApprenticeShelf {
           this.assembling = true
           this.progress = 0
         }
-        // Otherwise: another apprentice beat us to it, the word got discovered,
-        // or peer reservations now starve this word. The next update tick will
-        // retry with fresh state.
       }
     }
 
@@ -218,12 +215,12 @@ export class ApprenticeShelf {
     }
 
     const needed: Record<string, number> = Object.create(null)
-    for (let i = 0; i < word.length; i++) {
-      const ch = word[i]!
-      needed[ch] = (needed[ch] ?? 0) + 1
+    for (const ch of word) {
+      const next = (needed[ch] ?? 0) + 1
+      needed[ch] = next
       // Mirror the worker's 2-letter buffer so we don't commit to a word
       // that will starve the player.
-      if ((available[ch] ?? 0) < needed[ch]! + 2) return false
+      if ((available[ch] ?? 0) < next + 2) return false
     }
     return true
   }
@@ -241,8 +238,9 @@ export class ApprenticeShelf {
     for (const [ch, count] of needed) {
       let removed = 0
       for (let i = letters.length - 1; i >= 0 && removed < count; i--) {
-        if (letters[i]!.char.toLowerCase() === ch) {
-          this.cb.removeLetter(letters[i]!)
+        const letter = letters[i]
+        if (letter && letter.char.toLowerCase() === ch) {
+          this.cb.removeLetter(letter)
           removed++
         }
       }
@@ -330,8 +328,10 @@ export class ApprenticeShelf {
     const fillT = Math.min(1, prog.progress * 2)
     const lettersArrived = Math.floor(fillT * n)
     for (let i = 0; i < lettersArrived; i++) {
+      const ch = word[i]
+      if (!ch) continue
       const t = new Text({
-        text: word[i]!.toUpperCase(),
+        text: ch.toUpperCase(),
         style: {
           fontFamily: 'Playfair Display',
           fontSize: 20,

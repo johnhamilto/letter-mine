@@ -8,6 +8,7 @@
 
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { type MarkovData } from '../src/markov'
 
 const CORPUS_DIR = join(import.meta.dir, '..', 'data', 'corpus')
 const OUTPUT_PATH = join(import.meta.dir, '..', 'public', 'markov.json')
@@ -85,15 +86,6 @@ function cleanWord(word: string): string | null {
   // Normalize: lowercase unless it starts a sentence (caller handles capitalization)
   // Keep the word as-is to preserve sentence starts
   return w
-}
-
-function isSentenceEnd(word: string): boolean {
-  return /[.!?]$/.test(word)
-}
-
-interface MarkovData {
-  starts: [string, string][]
-  transitions: Record<string, Record<string, number>>
 }
 
 async function main() {

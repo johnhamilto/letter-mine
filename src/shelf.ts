@@ -149,7 +149,8 @@ export class Shelf {
   moveLetter(fromIdx: number, toIdx: number) {
     if (fromIdx === toIdx) return
     if (fromIdx < 0 || fromIdx >= this.letters.length) return
-    const letter = this.letters.splice(fromIdx, 1)[0]!
+    const letter = this.letters.splice(fromIdx, 1)[0]
+    if (!letter) return
     const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx
     this.letters.splice(Math.min(insertAt, this.letters.length), 0, letter)
     this.validate()
@@ -172,43 +173,53 @@ export class Shelf {
    */
   getCompletionChars(basinCounts: Map<string, number>): Set<string> {
     const result = new Set<string>()
-    if (this.letters.length < 3 || !this.dictionary || !this.prefixes) return result
+    const dictionary = this.dictionary
+    const prefixes = this.prefixes
+    if (this.letters.length < 3 || !dictionary || !prefixes) return result
 
     const prefix = this.currentWord()
     const counts = new Map(basinCounts)
 
     for (let c = 97; c <= 122; c++) {
       const ch = String.fromCharCode(c)
-      if ((counts.get(ch) ?? 0) === 0) continue
+      const avail = counts.get(ch) ?? 0
+      if (avail === 0) continue
 
       const next = prefix + ch
-      if (!this.prefixes.has(next) && !this.dictionary.has(next)) continue
+      if (!prefixes.has(next) && !dictionary.has(next)) continue
 
-      counts.set(ch, counts.get(ch)! - 1)
-      if (this.canReachWord(next, this.maxSlots, counts)) {
+      counts.set(ch, avail - 1)
+      if (this.canReachWord(next, this.maxSlots, counts, dictionary, prefixes)) {
         result.add(ch)
       }
-      counts.set(ch, counts.get(ch)! + 1)
+      counts.set(ch, avail)
     }
     return result
   }
 
-  private canReachWord(prefix: string, maxLen: number, counts: Map<string, number>): boolean {
-    if (prefix.length >= 4 && this.dictionary!.has(prefix) && !this.discoveredWords?.has(prefix)) {
+  private canReachWord(
+    prefix: string,
+    maxLen: number,
+    counts: Map<string, number>,
+    dictionary: Set<string>,
+    prefixes: Set<string>,
+  ): boolean {
+    if (prefix.length >= 4 && dictionary.has(prefix) && !this.discoveredWords?.has(prefix)) {
       return true
     }
     if (prefix.length >= maxLen) return false
 
     for (let c = 97; c <= 122; c++) {
       const ch = String.fromCharCode(c)
-      if ((counts.get(ch) ?? 0) === 0) continue
+      const avail = counts.get(ch) ?? 0
+      if (avail === 0) continue
 
       const next = prefix + ch
-      if (!this.prefixes!.has(next) && !this.dictionary!.has(next)) continue
+      if (!prefixes.has(next) && !dictionary.has(next)) continue
 
-      counts.set(ch, counts.get(ch)! - 1)
-      const found = this.canReachWord(next, maxLen, counts)
-      counts.set(ch, counts.get(ch)! + 1)
+      counts.set(ch, avail - 1)
+      const found = this.canReachWord(next, maxLen, counts, dictionary, prefixes)
+      counts.set(ch, avail)
       if (found) return true
     }
     return false

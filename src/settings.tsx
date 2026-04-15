@@ -75,9 +75,7 @@ function SettingsDrawer(props: SettingsProps) {
                 <input
                   type="checkbox"
                   checked={settings.perfMonitorEnabled}
-                  onChange={(e) =>
-                    onChange({ perfMonitorEnabled: (e.target as HTMLInputElement).checked })
-                  }
+                  onChange={(e) => onChange({ perfMonitorEnabled: e.currentTarget.checked })}
                 />
                 <span>Show perf monitor</span>
               </label>
@@ -89,7 +87,7 @@ function SettingsDrawer(props: SettingsProps) {
                 <input
                   type="checkbox"
                   checked={settings.muted}
-                  onChange={(e) => onChange({ muted: (e.target as HTMLInputElement).checked })}
+                  onChange={(e) => onChange({ muted: e.currentTarget.checked })}
                 />
                 <span>Mute sound</span>
               </label>

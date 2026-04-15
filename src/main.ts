@@ -1,6 +1,14 @@
 import { Application } from 'pixi.js'
 import { PhysicsProxy } from './physics'
 import { Game } from './game'
+import type { GlyphData } from './types'
+
+declare global {
+  interface Window {
+    __game?: Game
+    __error?: string
+  }
+}
 
 async function main() {
   const base = import.meta.env.BASE_URL
@@ -11,7 +19,10 @@ async function main() {
     document.fonts.add(font)
   })()
 
-  const glyphData = await fetch(`${base}glyphs.json`).then((r) => r.json())
+  const glyphData = (await fetch(`${base}glyphs.json`).then((r) => r.json())) as Record<
+    string,
+    GlyphData
+  >
 
   const app = new Application()
   await app.init({
@@ -23,7 +34,6 @@ async function main() {
     resolution: window.devicePixelRatio,
   })
 
-  // Disable PixiJS ticker — we drive rendering from our own rAF loop
   app.ticker.stop()
   app.ticker.autoStart = false
 
@@ -35,11 +45,11 @@ async function main() {
   await physics.init(glyphData, window.innerWidth, window.innerHeight)
 
   const game = new Game(app, physics, glyphData)
-  ;(window as unknown as Record<string, unknown>).__game = game
+  window.__game = game
   game.start()
 }
 
 main().catch((err) => {
-  ;(window as unknown as Record<string, unknown>).__error = String(err)
+  window.__error = String(err)
   console.error(err)
 })

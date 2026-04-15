@@ -44,19 +44,6 @@ const DEFAULT_UPGRADE_LEVELS: Record<UpgradeTrack, number> = {
   alchemy: 0,
 }
 
-export function defaultState(): GameState {
-  return {
-    ink: 0,
-    totalInkEarned: 0,
-    discoveredWords: [],
-    discoveredRoots: [],
-    upgradeLevels: { ...DEFAULT_UPGRADE_LEVELS },
-    unlockedUniques: [],
-    highestMilestone: null,
-    settings: { ...DEFAULT_SETTINGS },
-  }
-}
-
 const VALID_CAP_PERCENTS: ReadonlySet<number> = new Set([0.25, 0.5, 0.75, 0.9, 1.0])
 
 function parseSettings(v: unknown): Settings {
@@ -74,8 +61,16 @@ function parseSettings(v: unknown): Settings {
   return out
 }
 
-const VALID_UNIQUES = new Set<string>(UNIQUE_UPGRADES.map((u) => u.id))
-const VALID_MILESTONES = new Set<string>(MILESTONES.map((m) => m.name))
+const VALID_UNIQUES: ReadonlySet<string> = new Set(UNIQUE_UPGRADES.map((u) => u.id))
+const VALID_MILESTONES: ReadonlySet<string> = new Set(MILESTONES.map((m) => m.name))
+
+function isUniqueUpgrade(id: string): id is UniqueUpgrade {
+  return VALID_UNIQUES.has(id)
+}
+
+function isMilestoneName(name: string): name is MilestoneName {
+  return VALID_MILESTONES.has(name)
+}
 
 function asStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return []
@@ -108,7 +103,6 @@ export function loadState(): GameState | null {
   if (typeof parsed !== 'object' || parsed === null) return null
   const obj = parsed as Record<string, unknown>
 
-  // Upgrade levels: only keep tracks we recognize, ignore the rest.
   const upgradeLevels = { ...DEFAULT_UPGRADE_LEVELS }
   const savedLevels =
     typeof obj.upgradeLevels === 'object' && obj.upgradeLevels !== null
@@ -119,9 +113,8 @@ export function loadState(): GameState | null {
     if (typeof v === 'number' && Number.isFinite(v)) upgradeLevels[key] = v
   }
 
-  // Uniques: drop any IDs no longer in the game.
   const rawUniques = asStringArray(obj.unlockedUniques)
-  const unlockedUniques = rawUniques.filter((id) => VALID_UNIQUES.has(id)) as UniqueUpgrade[]
+  const unlockedUniques = rawUniques.filter(isUniqueUpgrade)
 
   // Migration: 'alchemy' used to be a unique upgrade; it's now a tiered track.
   // Any player who owned the unique starts at level 1 of the new track.
@@ -129,10 +122,9 @@ export function loadState(): GameState | null {
     upgradeLevels.alchemy = 1
   }
 
-  // Milestone: only accept a known name, otherwise null.
   const highestMilestone =
-    typeof obj.highestMilestone === 'string' && VALID_MILESTONES.has(obj.highestMilestone)
-      ? (obj.highestMilestone as MilestoneName)
+    typeof obj.highestMilestone === 'string' && isMilestoneName(obj.highestMilestone)
+      ? obj.highestMilestone
       : null
 
   return {
