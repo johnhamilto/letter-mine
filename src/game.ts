@@ -18,6 +18,7 @@ import { createDevPanel } from './debug'
 import { MarkovGenerator, type MarkovData } from './markov'
 import { SoundManager } from './sound'
 import { PerfMonitor } from './perf-monitor'
+import { DetachFx } from './detach-fx'
 import { makeText } from './pixi-text'
 import { SCALE, COLORS, FIXED_DT, MAX_SUBSTEPS, FOREGROUND_MS, BASIN, MINING } from './constants'
 import type {
@@ -48,6 +49,7 @@ export class Game {
   drag!: DragController
   shelf!: Shelf
   renderer: LetterRenderer
+  private detachFx: DetachFx
   economy: Economy
   hud: Hud
   dictionary: Record<string, DictionaryEntry> = {}
@@ -128,6 +130,7 @@ export class Game {
     // Renderer
     this.renderer = new LetterRenderer()
     this.renderer.initAtlas(glyphs)
+    this.detachFx = new DetachFx()
 
     // Sound
     this.sound = new SoundManager()
@@ -495,6 +498,20 @@ export class Game {
     this.renderer.removeSprite(letter)
   }
 
+  /**
+   * Like removeLetter, but the sprite stays alive long enough to play a detach
+   * animation. Used when an apprentice consumes a letter from the basin.
+   */
+  private consumeLetterWithFx(letter: LetterBody) {
+    const sprite = this.renderer.detachSprite(letter)
+    this.physics.remove(letter.id)
+    const idx = this.letters.indexOf(letter)
+    if (idx >= 0) this.letters.splice(idx, 1)
+    this.letterMap.delete(letter.id)
+    this.foregroundLetters.delete(letter)
+    if (sprite) this.detachFx.spawn(sprite, this.settings.apprenticeFx)
+  }
+
   /** Build a lowercase char → count map from the current basin contents. */
   private countBasinLetters(): Map<string, number> {
     const counts = new Map<string, number>()
@@ -740,7 +757,7 @@ export class Game {
     const holder: { shelf: ApprenticeShelf | null } = { shelf: null }
     const shelf = new ApprenticeShelf({
       getLetters: () => this.letters,
-      removeLetter: (letter) => this.removeLetter(letter),
+      removeLetter: (letter) => this.consumeLetterWithFx(letter),
       getDiscoveredWords: () => this.economy.discoveredWords,
       getDictionary: () => this.dictionary,
       getBlockedLetters: () => this.aggregateReservedLetters(holder.shelf),
@@ -1438,6 +1455,7 @@ export class Game {
       const glow = ghostChars && ghostChars.has(letter.char.toLowerCase()) ? '#2E8B7D' : null
       this.renderer.updateSprite(letter, letter === hovered, glow)
     }
+    this.detachFx.update()
     this.perfMonitor.recordPhase('letters', performance.now() - t)
 
     t = performance.now()

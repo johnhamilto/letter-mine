@@ -231,10 +231,9 @@ export class ApprenticeShelf {
       needed.set(ch, (needed.get(ch) ?? 0) + 1)
     }
 
-    // Remove letters from basin
     for (const [ch, count] of needed) {
       let removed = 0
-      for (let i = letters.length - 1; i >= 0 && removed < count; i--) {
+      for (let i = 0; i < letters.length && removed < count; i++) {
         const letter = letters[i]
         if (letter && letter.char.toLowerCase() === ch) {
           this.cb.removeLetter(letter)

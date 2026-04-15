@@ -228,6 +228,26 @@ export class LetterRenderer {
   }
 
   /**
+   * Release ownership of the sprite to the caller (e.g., for a detach animation).
+   * Glow is destroyed since it has no independent animation path. Returns null if
+   * the letter has no active sprite.
+   */
+  detachSprite(letter: LetterBody): Sprite | null {
+    const entry = this.spriteMap.get(letter)
+    if (!entry) return null
+    entry.sprite.position.set(letter.x * SCALE, letter.y * SCALE)
+    entry.sprite.rotation = letter.rotation
+    this.spriteMap.delete(letter)
+    const glow = this.glowMap.get(letter)
+    if (glow) {
+      glow.sprite.removeFromParent()
+      glow.sprite.destroy()
+      this.glowMap.delete(letter)
+    }
+    return entry.sprite
+  }
+
+  /**
    * Update sprite position/rotation from physics state, with optional glow.
    * Short-circuits Pixi property writes when values are unchanged — settled bodies
    * cost one Map lookup and three equality checks per frame.

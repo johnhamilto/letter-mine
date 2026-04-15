@@ -92,6 +92,29 @@ function SettingsDrawer(props: SettingsProps) {
                 <span>Mute sound</span>
               </label>
             </div>
+
+            <div class="settings-section">
+              <h3>Apprentice Effect</h3>
+              <p class="settings-hint">
+                Choose how letters vanish when an apprentice consumes them.
+              </p>
+              <div class="settings-presets">
+                <button
+                  class={`settings-preset${settings.apprenticeFx === 'fade-drift' ? ' active' : ''}`}
+                  onClick={() => onChange({ apprenticeFx: 'fade-drift' })}
+                >
+                  <div class="settings-preset-label">Fade</div>
+                  <div class="settings-preset-hint">Subtle</div>
+                </button>
+                <button
+                  class={`settings-preset${settings.apprenticeFx === 'ink-burst' ? ' active' : ''}`}
+                  onClick={() => onChange({ apprenticeFx: 'ink-burst' })}
+                >
+                  <div class="settings-preset-label">Ink Burst</div>
+                  <div class="settings-preset-hint">Splashy</div>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

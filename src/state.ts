@@ -1,5 +1,6 @@
 /** Game state persistence — save/load to localStorage. */
 
+import type { DetachStyle } from './detach-fx'
 import type { MilestoneName, UniqueUpgrade, UpgradeTrack } from './types'
 import { MILESTONES, UNIQUE_UPGRADES } from './upgrades'
 
@@ -11,12 +12,14 @@ export interface Settings {
   autoMinerCapPercent: number
   perfMonitorEnabled: boolean
   muted: boolean
+  apprenticeFx: DetachStyle
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   autoMinerCapPercent: 0.9,
   perfMonitorEnabled: false,
   muted: false,
+  apprenticeFx: 'fade-drift',
 }
 
 export interface GameState {
@@ -45,6 +48,14 @@ const DEFAULT_UPGRADE_LEVELS: Record<UpgradeTrack, number> = {
 }
 
 const VALID_CAP_PERCENTS: ReadonlySet<number> = new Set([0.25, 0.5, 0.75, 0.9, 1.0])
+const VALID_APPRENTICE_FX: ReadonlySet<DetachStyle> = new Set<DetachStyle>([
+  'fade-drift',
+  'ink-burst',
+])
+
+function isDetachStyle(v: unknown): v is DetachStyle {
+  return typeof v === 'string' && VALID_APPRENTICE_FX.has(v as DetachStyle)
+}
 
 function parseSettings(v: unknown): Settings {
   const out: Settings = { ...DEFAULT_SETTINGS }
@@ -58,6 +69,7 @@ function parseSettings(v: unknown): Settings {
   }
   if (typeof obj.perfMonitorEnabled === 'boolean') out.perfMonitorEnabled = obj.perfMonitorEnabled
   if (typeof obj.muted === 'boolean') out.muted = obj.muted
+  if (isDetachStyle(obj.apprenticeFx)) out.apprenticeFx = obj.apprenticeFx
   return out
 }
 
