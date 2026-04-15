@@ -41,10 +41,12 @@ html, body {
 
 .milestone-bar-fill {
   height: 100%;
+  width: 100%;
   background: #6B4423;
-  border-radius: 0 2px 2px 0;
-  transition: width 0.3s ease;
-  min-width: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.3s ease;
+  will-change: transform;
 }
 
 .milestone-bar-label {

@@ -4,25 +4,39 @@ import { Sprite, Texture, Container, Rectangle } from 'pixi.js'
 import { SCALE, COLORS, FONT_FAMILY } from './constants'
 import type { GlyphData, LetterBody } from './types'
 
+interface SpriteEntry {
+  sprite: Sprite
+  lastX: number
+  lastY: number
+  lastRotation: number
+  lastAlpha: number
+}
+
+function makeLetterLayer(): Container {
+  const layer = new Container()
+  // We do our own hit testing via physics; skip Pixi's pointer-target crawl.
+  layer.interactiveChildren = false
+  return layer
+}
+
 export class LetterRenderer {
   private textureCache = new Map<string, Texture>()
-  private spriteMap = new Map<LetterBody, Sprite>()
+  private spriteMap = new Map<LetterBody, SpriteEntry>()
   private glowMap = new Map<LetterBody, { sprite: Sprite; color: string }>()
   private atlasBuilt = false
   showGlyphs = true
   showColliders = false
 
   /** Container for basin letters (behind shelf). */
-  readonly basinLayer = new Container()
+  readonly basinLayer = makeLetterLayer()
   /** Container for foreground letters (above shelf). */
-  readonly foregroundLayer = new Container()
+  readonly foregroundLayer = makeLetterLayer()
   /** Container for the dragged letter (topmost). */
-  readonly dragLayer = new Container()
+  readonly dragLayer = makeLetterLayer()
 
   /**
-   * Bake every glyph into one atlas BaseTexture. Each sprite's Texture references
-   * a sub-region of that single source, so Pixi's auto-batcher can flush all
-   * letters in one draw call instead of one per character.
+   * Bake every glyph into one atlas TextureSource. Each sprite's Texture references
+   * a sub-region of that single source so Pixi batches every letter into one draw call.
    */
   initAtlas(glyphs: Record<string, GlyphData>) {
     if (this.atlasBuilt) return
@@ -183,17 +197,27 @@ export class LetterRenderer {
     const sprite = new Sprite(texture)
     sprite.anchor.set(0.5, 0.5)
     sprite.visible = this.showGlyphs
-    this.spriteMap.set(letter, sprite)
+    const x = letter.x * SCALE
+    const y = letter.y * SCALE
+    sprite.position.set(x, y)
+    sprite.rotation = letter.rotation
+    this.spriteMap.set(letter, {
+      sprite,
+      lastX: x,
+      lastY: y,
+      lastRotation: letter.rotation,
+      lastAlpha: 1,
+    })
     this.basinLayer.addChild(sprite)
     return sprite
   }
 
   /** Remove the sprite for a destroyed letter. */
   removeSprite(letter: LetterBody) {
-    const sprite = this.spriteMap.get(letter)
-    if (sprite) {
-      sprite.removeFromParent()
-      sprite.destroy()
+    const entry = this.spriteMap.get(letter)
+    if (entry) {
+      entry.sprite.removeFromParent()
+      entry.sprite.destroy()
       this.spriteMap.delete(letter)
     }
     const glow = this.glowMap.get(letter)
@@ -206,20 +230,40 @@ export class LetterRenderer {
 
   /** Get the sprite for a letter (may be null if not yet created). */
   getSprite(letter: LetterBody): Sprite | undefined {
-    return this.spriteMap.get(letter)
+    return this.spriteMap.get(letter)?.sprite
   }
 
-  /** Update sprite position/rotation from physics state, with optional glow. */
+  /**
+   * Update sprite position/rotation from physics state, with optional glow.
+   * Short-circuits Pixi property writes when values are unchanged — settled bodies
+   * cost one Map lookup and three equality checks per frame.
+   */
   updateSprite(letter: LetterBody, highlighted = false, glowColor: string | null = null) {
-    const sprite = this.spriteMap.get(letter)
-    if (!sprite) return
+    const entry = this.spriteMap.get(letter)
+    if (!entry) return
+    const sprite = entry.sprite
 
-    sprite.position.set(letter.x * SCALE, letter.y * SCALE)
-    sprite.rotation = letter.rotation
+    const x = letter.x * SCALE
+    const y = letter.y * SCALE
+    const rotation = letter.rotation
+    const alpha = highlighted ? 0.85 : 1
+
+    const moved = x !== entry.lastX || y !== entry.lastY || rotation !== entry.lastRotation
+    if (moved) {
+      sprite.position.set(x, y)
+      sprite.rotation = rotation
+      entry.lastX = x
+      entry.lastY = y
+      entry.lastRotation = rotation
+    }
+    if (alpha !== entry.lastAlpha) {
+      sprite.alpha = alpha
+      entry.lastAlpha = alpha
+    }
+    // showGlyphs is a dev toggle — cheap, always apply so flips take effect immediately.
     sprite.visible = this.showGlyphs
-    sprite.alpha = highlighted ? 0.85 : 1
 
-    // Glow sprite management
+    // Glow sprite management — skip position sync when unchanged.
     const existing = this.glowMap.get(letter)
     if (glowColor) {
       if (!existing || existing.color !== glowColor) {
@@ -237,10 +281,12 @@ export class LetterRenderer {
           parent.addChildAt(glow, idx)
         }
       }
-      const glow = this.glowMap.get(letter)!.sprite
-      glow.position.set(letter.x * SCALE, letter.y * SCALE)
-      glow.rotation = letter.rotation
-      glow.visible = this.showGlyphs
+      if (moved || !existing) {
+        const glow = this.glowMap.get(letter)!.sprite
+        glow.position.set(x, y)
+        glow.rotation = rotation
+      }
+      this.glowMap.get(letter)!.sprite.visible = this.showGlyphs
     } else if (existing) {
       existing.sprite.removeFromParent()
       existing.sprite.destroy()
@@ -250,11 +296,11 @@ export class LetterRenderer {
 
   /** Move a sprite to a specific container layer. */
   moveToLayer(letter: LetterBody, layer: Container) {
-    const sprite = this.spriteMap.get(letter)
-    if (sprite && sprite.parent !== layer) {
+    const entry = this.spriteMap.get(letter)
+    if (entry && entry.sprite.parent !== layer) {
       const glow = this.glowMap.get(letter)
       if (glow) layer.addChild(glow.sprite)
-      layer.addChild(sprite)
+      layer.addChild(entry.sprite)
     }
   }
 }

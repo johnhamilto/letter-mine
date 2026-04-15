@@ -33,6 +33,8 @@ export class Hud {
   getMilestone: () => MilestoneName | null = () => null
   getTotalWords: () => number = () => 0
   onDictionaryOpen: (() => void) | null = null
+  /** Optional perf sink: called with (phaseName, ms). Set by Game for diagnostics. */
+  perfSink: ((name: string, ms: number) => void) | null = null
 
   readonly container = new Container()
 
@@ -54,6 +56,13 @@ export class Hud {
 
   // DOM HUD elements
   private inkEl: HTMLDivElement
+
+  // Memoized last-written DOM values — avoid redundant writes that trigger layout/style recalc
+  private lastInkText = ''
+  private lastDiscText = ''
+  private lastBarWidth = ''
+  private lastBarLabel = ''
+  private lastBarTooltip = ''
 
   // PixiJS text objects (animated effects only)
   private flashes: FlashState[] = []
@@ -159,13 +168,38 @@ export class Hud {
   }
 
   render(screenWidth: number, screenHeight: number) {
+    const sink = this.perfSink
+    if (!sink) {
+      this.renderInkCounter()
+      this.renderDiscoveredCount()
+      this.updateMilestoneBar()
+      this.renderScoreFlash(screenWidth)
+      this.renderFamilyFlash(screenWidth)
+      this.renderMilestoneFlash(screenWidth, screenHeight)
+      this.renderImprimaturSweep(screenWidth, screenHeight)
+      return
+    }
+    let t = performance.now()
     this.renderInkCounter()
+    sink('ink', performance.now() - t)
+    t = performance.now()
     this.renderDiscoveredCount()
+    sink('disc', performance.now() - t)
+    t = performance.now()
     this.updateMilestoneBar()
+    sink('msbar', performance.now() - t)
+    t = performance.now()
     this.renderScoreFlash(screenWidth)
+    sink('sflash', performance.now() - t)
+    t = performance.now()
     this.renderFamilyFlash(screenWidth)
+    sink('fflash', performance.now() - t)
+    t = performance.now()
     this.renderMilestoneFlash(screenWidth, screenHeight)
+    sink('mflash', performance.now() - t)
+    t = performance.now()
     this.renderImprimaturSweep(screenWidth, screenHeight)
+    sink('iflash', performance.now() - t)
   }
 
   private renderFamilyFlash(screenWidth: number) {
@@ -244,12 +278,35 @@ export class Hud {
 
   private renderInkCounter() {
     const ink = Math.floor(this.economy.ink)
-    this.inkEl.textContent = `${ink.toLocaleString()} Ink`
+    const text = `${ink.toLocaleString()} Ink`
+    if (text !== this.lastInkText) {
+      this.inkEl.textContent = text
+      this.lastInkText = text
+    }
   }
 
   private renderDiscoveredCount() {
     const count = this.economy.discoveredWords.size
-    this.dictButton.textContent = `${count.toLocaleString()} discovered`
+    const text = `${count.toLocaleString()} discovered`
+    if (text !== this.lastDiscText) {
+      this.dictButton.textContent = text
+      this.lastDiscText = text
+    }
+  }
+
+  private setBar(scale: string, label: string, tooltip: string) {
+    if (scale !== this.lastBarWidth) {
+      this.barFill.style.transform = `scaleX(${scale})`
+      this.lastBarWidth = scale
+    }
+    if (label !== this.lastBarLabel) {
+      this.barLabel.textContent = label
+      this.lastBarLabel = label
+    }
+    if (tooltip !== this.lastBarTooltip) {
+      this.barTooltip.textContent = tooltip
+      this.lastBarTooltip = tooltip
+    }
   }
 
   private updateMilestoneBar() {
@@ -260,9 +317,7 @@ export class Hud {
     const nextMs = MILESTONES[currentIdx + 1]
 
     if (!nextMs) {
-      this.barFill.style.width = '100%'
-      this.barLabel.textContent = 'All milestones reached'
-      this.barTooltip.textContent = `${discovered.toLocaleString()} words discovered`
+      this.setBar('1', 'All milestones reached', `${discovered.toLocaleString()} words discovered`)
       return
     }
 
@@ -270,18 +325,19 @@ export class Hud {
       currentIdx >= 0 && Number.isFinite(MILESTONES[currentIdx]!.wordsRequired)
         ? MILESTONES[currentIdx]!.wordsRequired
         : 0
-    // Master milestone resolves its threshold at runtime from the full dictionary size.
     const nextThreshold = Number.isFinite(nextMs.wordsRequired)
       ? nextMs.wordsRequired
       : this.getTotalWords() || Infinity
     const range = Math.max(1, nextThreshold - prevThreshold)
     const progress = Math.min(1, (discovered - prevThreshold) / range)
 
-    this.barFill.style.width = `${(progress * 100).toFixed(1)}%`
-    this.barLabel.textContent = nextMs.displayName
-    this.barTooltip.textContent = Number.isFinite(nextThreshold)
-      ? `${discovered.toLocaleString()} / ${nextThreshold.toLocaleString()} words`
-      : `${discovered.toLocaleString()} words discovered`
+    this.setBar(
+      progress.toFixed(3),
+      nextMs.displayName,
+      Number.isFinite(nextThreshold)
+        ? `${discovered.toLocaleString()} / ${nextThreshold.toLocaleString()} words`
+        : `${discovered.toLocaleString()} words discovered`,
+    )
   }
 
   /** Start a fresh score toast. Callers use this for independent events (main submit, apprentice). */

@@ -38,6 +38,8 @@ export class PerfMonitor {
   private physTimes = ring()
   private spriteTimes = ring()
   private gpuTimes = ring()
+  private phaseTimes = new Map<string, Ring>()
+  private phaseOrder: string[] = []
   private spikeCount = 0
   private lastRender = 0
   private _enabled = false
@@ -60,6 +62,8 @@ export class PerfMonitor {
       this.physTimes = ring()
       this.spriteTimes = ring()
       this.gpuTimes = ring()
+      this.phaseTimes.clear()
+      this.phaseOrder = []
       this.spikeCount = 0
     }
   }
@@ -90,6 +94,18 @@ export class PerfMonitor {
     if (this._enabled) push(this.gpuTimes, ms)
   }
 
+  /** Record an arbitrary named phase time. Cheap: no allocations on the hot path. */
+  recordPhase(name: string, ms: number) {
+    if (!this._enabled) return
+    let r = this.phaseTimes.get(name)
+    if (!r) {
+      r = ring()
+      this.phaseTimes.set(name, r)
+      this.phaseOrder.push(name)
+    }
+    push(r, ms)
+  }
+
   render() {
     if (!this._enabled) return
     const now = performance.now()
@@ -116,6 +132,17 @@ export class PerfMonitor {
       }`,
       `spikes ${this.spikeCount} (>20ms)`,
     ]
+    if (this.phaseOrder.length > 0) {
+      rows.push('─── phases ───')
+      let maxNameLen = 0
+      for (const name of this.phaseOrder) {
+        if (name.length > maxNameLen) maxNameLen = name.length
+      }
+      for (const name of this.phaseOrder) {
+        const r = this.phaseTimes.get(name)!
+        rows.push(`${name.padEnd(maxNameLen)}  ${fmt(r)} ms`)
+      }
+    }
     this.el.textContent = rows.join('\n')
   }
 }

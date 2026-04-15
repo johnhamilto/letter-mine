@@ -50,6 +50,7 @@ export class Game {
   economy: Economy
   hud: Hud
   dictionary: Record<string, DictionaryEntry> = {}
+  private totalWordsCount = 0
   foregroundLetters = new Map<LetterBody, number>()
   sound: SoundManager
 
@@ -100,10 +101,10 @@ export class Game {
   private hudLayer: Container
   private overflowHudContainer = new Container()
 
-  // Overflow vignette — rendered to OffscreenCanvas for gradient support
+  // Overflow vignette — baked once to a texture, intensity modulated via sprite alpha
   private vignetteSprite = new Sprite()
-  private vignetteCanvas: OffscreenCanvas | null = null
-  private vignetteCtx: OffscreenCanvasRenderingContext2D | null = null
+  private vignetteBakedW = 0
+  private vignetteBakedH = 0
 
   // Overflow HUD elements
   private overflowContainer = new Container()
@@ -146,8 +147,9 @@ export class Game {
     this.perfMonitor.enabled = this.settings.perfMonitorEnabled
     this.hud = new Hud(this.economy)
     this.hud.getMilestone = () => this.highestMilestone
-    this.hud.getTotalWords = () => Object.keys(this.dictionary).length
+    this.hud.getTotalWords = () => this.totalWordsCount
     this.hud.onDictionaryOpen = () => this.openDictionary()
+    this.hud.perfSink = (name, ms) => this.perfMonitor.recordPhase(`hud.${name}`, ms)
     const reached = milestoneReached(
       this.economy.discoveredWords.size,
       Object.keys(this.dictionary).length,
@@ -512,6 +514,7 @@ export class Game {
       const data = (await resp.json()) as Record<string, DictionaryEntry>
       this.dictionary = data
       const words = new Set(Object.keys(data))
+      this.totalWordsCount = words.size
       this.shelf.loadDictionary(words)
       this.shelf.discoveredWords = this.economy.discoveredWords
       this.buildFamilyMap()
@@ -1180,6 +1183,58 @@ export class Game {
     }
   }
 
+  /**
+   * Bake the overflow vignette to a texture at a reference intensity. Called on resize
+   * and first overflow entry — NOT every frame. Per-frame intensity and pulse are
+   * driven by `sprite.alpha` in {@link renderOverflowVignette}.
+   */
+  private bakeOverflowVignette() {
+    const dpr = window.devicePixelRatio
+    const w = this.width
+    const h = this.height
+    const oc = new OffscreenCanvas(w * dpr, h * dpr)
+    const ctx = oc.getContext('2d')
+    if (!ctx) return
+    ctx.scale(dpr, dpr)
+
+    // Bake at max intensity; per-frame tuning happens via sprite.alpha.
+    const baseAlpha = 0.35
+    const spread = 140
+
+    const topGrad = ctx.createLinearGradient(0, 0, 0, spread)
+    topGrad.addColorStop(0, `rgba(192, 57, 43, ${baseAlpha})`)
+    topGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
+    ctx.fillStyle = topGrad
+    ctx.fillRect(0, 0, w, spread)
+
+    const botGrad = ctx.createLinearGradient(0, h, 0, h - spread)
+    botGrad.addColorStop(0, `rgba(192, 57, 43, ${baseAlpha})`)
+    botGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
+    ctx.fillStyle = botGrad
+    ctx.fillRect(0, h - spread, w, spread)
+
+    const leftGrad = ctx.createLinearGradient(0, 0, spread, 0)
+    leftGrad.addColorStop(0, `rgba(192, 57, 43, ${baseAlpha * 0.6})`)
+    leftGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
+    ctx.fillStyle = leftGrad
+    ctx.fillRect(0, 0, spread, h)
+
+    const rightGrad = ctx.createLinearGradient(w, 0, w - spread, 0)
+    rightGrad.addColorStop(0, `rgba(192, 57, 43, ${baseAlpha * 0.6})`)
+    rightGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
+    ctx.fillStyle = rightGrad
+    ctx.fillRect(w - spread, 0, spread, h)
+
+    const oldTex = this.vignetteSprite.texture
+    if (oldTex !== Texture.EMPTY) oldTex.destroy(true)
+    this.vignetteSprite.texture = Texture.from({
+      resource: oc.transferToImageBitmap(),
+      resolution: dpr,
+    })
+    this.vignetteBakedW = w
+    this.vignetteBakedH = h
+  }
+
   renderOverflowVignette() {
     const count = this.getLetterCount()
     const max = this.getBasinCapacity()
@@ -1204,64 +1259,11 @@ export class Game {
       return
     }
 
-    const dpr = window.devicePixelRatio
-    const w = this.width
-    const h = this.height
-
-    // Lazily create / resize the offscreen canvas
-    if (
-      !this.vignetteCanvas ||
-      this.vignetteCanvas.width !== w * dpr ||
-      this.vignetteCanvas.height !== h * dpr
-    ) {
-      this.vignetteCanvas = new OffscreenCanvas(w * dpr, h * dpr)
-      this.vignetteCtx = this.vignetteCanvas.getContext('2d')
+    if (this.vignetteBakedW !== this.width || this.vignetteBakedH !== this.height) {
+      this.bakeOverflowVignette()
     }
-    const ctx = this.vignetteCtx!
-    ctx.clearRect(0, 0, w * dpr, h * dpr)
-    ctx.save()
-    ctx.scale(dpr, dpr)
 
-    const alpha = intensity * 0.35
-    const spread = 60 + intensity * 80
-
-    // Top edge
-    const topGrad = ctx.createLinearGradient(0, 0, 0, spread)
-    topGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
-    topGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = topGrad
-    ctx.fillRect(0, 0, w, spread)
-
-    // Bottom edge
-    const botGrad = ctx.createLinearGradient(0, h, 0, h - spread)
-    botGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha})`)
-    botGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = botGrad
-    ctx.fillRect(0, h - spread, w, spread)
-
-    // Left edge
-    const leftGrad = ctx.createLinearGradient(0, 0, spread, 0)
-    leftGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
-    leftGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = leftGrad
-    ctx.fillRect(0, 0, spread, h)
-
-    // Right edge
-    const rightGrad = ctx.createLinearGradient(w, 0, w - spread, 0)
-    rightGrad.addColorStop(0, `rgba(192, 57, 43, ${alpha * 0.6})`)
-    rightGrad.addColorStop(1, 'rgba(192, 57, 43, 0)')
-    ctx.fillStyle = rightGrad
-    ctx.fillRect(w - spread, 0, spread, h)
-
-    ctx.restore()
-
-    // Upload to sprite texture
-    const oldTex = this.vignetteSprite.texture
-    if (oldTex !== Texture.EMPTY) oldTex.destroy(true)
-    this.vignetteSprite.texture = Texture.from({
-      resource: this.vignetteCanvas.transferToImageBitmap(),
-      resolution: dpr,
-    })
+    this.vignetteSprite.alpha = intensity
     this.vignetteSprite.visible = true
   }
 
@@ -1418,13 +1420,17 @@ export class Game {
   }
 
   render() {
+    let t = performance.now()
     this.mining.render(this.width)
+    this.perfMonitor.recordPhase('mining', performance.now() - t)
 
-    // Overflow vignette
+    t = performance.now()
     this.renderOverflowVignette()
+    this.perfMonitor.recordPhase('vignette', performance.now() - t)
 
-    // Letter census (DOM, only when upgrade unlocked)
+    t = performance.now()
     this.renderCensus()
+    this.perfMonitor.recordPhase('census', performance.now() - t)
 
     const dragging = this.drag.getDragging()
     const hovered = this.drag.getHovered()
@@ -1442,7 +1448,7 @@ export class Game {
       return null
     }
 
-    // Update all letter sprites and assign them to the correct layer
+    t = performance.now()
     for (const letter of this.letters) {
       const isForeground = this.foregroundLetters.has(letter)
       const isDrag = letter === dragging
@@ -1457,22 +1463,24 @@ export class Game {
 
       this.renderer.updateSprite(letter, letter === hovered, getGlow(letter))
     }
+    this.perfMonitor.recordPhase('letters', performance.now() - t)
 
-    // Shelf
+    t = performance.now()
     this.shelf.render()
+    this.perfMonitor.recordPhase('shelf', performance.now() - t)
 
-    // Overflow HUD
+    t = performance.now()
     this.renderOverflowHUD()
+    this.perfMonitor.recordPhase('ovhud', performance.now() - t)
 
-    // Economy HUD
+    t = performance.now()
     this.hud.render(this.width, this.height)
+    this.perfMonitor.recordPhase('hud', performance.now() - t)
 
-    // Apprentice assembly benches — stack vertically above the overflow HUD
-    // (or the main shelf). Skip idle apprentices (no word → no rendered bench),
-    // and never let a bench cross into the mining prompt area on short screens.
-    const BENCH_HEIGHT = 76 // actual bench box height from apprentice-shelf
+    t = performance.now()
+    const BENCH_HEIGHT = 76
     const BENCH_GAP = 6
-    const MIN_BENCH_TOP = MINING.firstLineY + MINING.lineHeight + 16 // keep clear of prompt
+    const MIN_BENCH_TOP = MINING.firstLineY + MINING.lineHeight + 16
     let apprenticeAnchor =
       this.overflowTopY !== null ? this.overflowTopY - 8 : this.shelf.rect.y - 12
     for (const a of this.apprenticeShelves) {
@@ -1483,5 +1491,6 @@ export class Game {
       const rendered = a.render(apprenticeAnchor)
       if (rendered) apprenticeAnchor -= BENCH_HEIGHT + BENCH_GAP
     }
+    this.perfMonitor.recordPhase('apprent', performance.now() - t)
   }
 }
