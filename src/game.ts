@@ -150,10 +150,7 @@ export class Game {
     this.hud.getTotalWords = () => this.totalWordsCount
     this.hud.onDictionaryOpen = () => this.openDictionary()
     this.hud.perfSink = (name, ms) => this.perfMonitor.recordPhase(`hud.${name}`, ms)
-    const reached = milestoneReached(
-      this.economy.discoveredWords.size,
-      Object.keys(this.dictionary).length,
-    )
+    const reached = milestoneReached(this.economy.discoveredWords.size, this.totalWordsCount)
     if (reached) this.highestMilestone = reached
 
     // Shelf
@@ -212,10 +209,6 @@ export class Game {
         onToggleGlyphs: () => {
           this.renderer.showGlyphs = !this.renderer.showGlyphs
           return this.renderer.showGlyphs
-        },
-        onToggleColliders: () => {
-          this.renderer.showColliders = !this.renderer.showColliders
-          return this.renderer.showColliders
         },
         onSpawnLetters: (count) => {
           const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -580,10 +573,7 @@ export class Game {
   }
 
   checkMilestones() {
-    const reached = milestoneReached(
-      this.economy.discoveredWords.size,
-      Object.keys(this.dictionary).length,
-    )
+    const reached = milestoneReached(this.economy.discoveredWords.size, this.totalWordsCount)
     if (reached && reached !== this.highestMilestone) {
       this.highestMilestone = reached
       this.hud.showMilestone(reached)
@@ -1442,12 +1432,6 @@ export class Game {
 
     const ghostChars = this.unlockedUniques.has('wordGhost') ? this.getGhostChars() : null
 
-    const getGlow = (letter: LetterBody): string | null => {
-      const lc = letter.char.toLowerCase()
-      if (ghostChars?.has(lc)) return '#2E8B7D'
-      return null
-    }
-
     t = performance.now()
     for (const letter of this.letters) {
       const isForeground = this.foregroundLetters.has(letter)
@@ -1461,7 +1445,8 @@ export class Game {
         this.renderer.moveToLayer(letter, this.renderer.basinLayer)
       }
 
-      this.renderer.updateSprite(letter, letter === hovered, getGlow(letter))
+      const glow = ghostChars && ghostChars.has(letter.char.toLowerCase()) ? '#2E8B7D' : null
+      this.renderer.updateSprite(letter, letter === hovered, glow)
     }
     this.perfMonitor.recordPhase('letters', performance.now() - t)
 

@@ -25,7 +25,6 @@ export class LetterRenderer {
   private glowMap = new Map<LetterBody, { sprite: Sprite; color: string }>()
   private atlasBuilt = false
   showGlyphs = true
-  showColliders = false
 
   /** Container for basin letters (behind shelf). */
   readonly basinLayer = makeLetterLayer()

@@ -4,7 +4,6 @@ import { COLORS, FONT_FAMILY } from './constants'
 
 export interface DevPanelCallbacks {
   onToggleGlyphs: () => boolean
-  onToggleColliders: () => boolean
   onSpawnLetters: (count: number) => void
   onAddInk: (amount: number) => void
   onDiscoverWords: (count: number) => void
@@ -135,7 +134,6 @@ export function createDevPanel(callbacks: DevPanelCallbacks): HTMLDivElement {
   // ── Rendering ──
   const renderRow = addSection('Rendering')
   addToggle(renderRow, 'Glyphs', true, callbacks.onToggleGlyphs)
-  addToggle(renderRow, 'Colliders', false, callbacks.onToggleColliders)
 
   // ── Spawn ──
   const spawnRow = addSection('Spawn Letters')

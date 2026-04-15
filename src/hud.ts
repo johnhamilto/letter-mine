@@ -60,7 +60,7 @@ export class Hud {
   // Memoized last-written DOM values — avoid redundant writes that trigger layout/style recalc
   private lastInkText = ''
   private lastDiscText = ''
-  private lastBarWidth = ''
+  private lastBarScale = ''
   private lastBarLabel = ''
   private lastBarTooltip = ''
 
@@ -295,9 +295,9 @@ export class Hud {
   }
 
   private setBar(scale: string, label: string, tooltip: string) {
-    if (scale !== this.lastBarWidth) {
+    if (scale !== this.lastBarScale) {
       this.barFill.style.transform = `scaleX(${scale})`
-      this.lastBarWidth = scale
+      this.lastBarScale = scale
     }
     if (label !== this.lastBarLabel) {
       this.barLabel.textContent = label
