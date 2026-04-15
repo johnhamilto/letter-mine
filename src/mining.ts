@@ -5,7 +5,7 @@
  */
 
 import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
-import { Container, Sprite, Texture } from 'pixi.js'
+import { CanvasSource, Container, Sprite, Texture } from 'pixi.js'
 import { COLORS, MINING, PROMPT_FONT } from './constants'
 import type { MarkovGenerator } from './markov'
 
@@ -48,6 +48,7 @@ export class MiningPrompt {
   private sprite: Sprite
   private canvas: OffscreenCanvas
   private ctx: OffscreenCanvasRenderingContext2D
+  private source: CanvasSource | null = null
   private currentWidth = 0
   private dpr = window.devicePixelRatio
 
@@ -60,7 +61,11 @@ export class MiningPrompt {
     if (!ctx) throw new Error('Cannot create mining canvas')
     this.ctx = ctx
 
-    this.sprite = new Sprite()
+    // Persistent CanvasSource wrapping our OffscreenCanvas. Reuse one Texture
+    // for the sprite's lifetime; call source.update() after each repaint to
+    // flag a GPU re-upload — no per-frame Texture allocation.
+    this.source = new CanvasSource({ resource: this.canvas, resolution: this.dpr })
+    this.sprite = new Sprite(new Texture({ source: this.source }))
     this.sprite.position.set(0, 0)
     this.container.addChild(this.sprite)
 
@@ -309,19 +314,11 @@ export class MiningPrompt {
 
     ctx.restore()
 
-    // Replace texture, marking skipCache so we don't pollute Pixi's global texture
-    // cache with a fresh ImageBitmap key on every frame.
-    const oldTexture = this.sprite.texture
-    if (oldTexture !== Texture.EMPTY) {
-      oldTexture.destroy(true)
-    }
-    this.sprite.texture = Texture.from(
-      {
-        resource: this.canvas.transferToImageBitmap(),
-        resolution: dpr,
-      },
-      true,
-    )
+    // Tell Pixi the canvas-backed texture has new content. Internally the source
+    // checks if the canvas resized and either re-resizes (emitting "change" with
+    // a new resourceId) or just emits "update" — both trigger a re-upload on the
+    // next render.
+    this.source!.update()
   }
 
   destroy() {
