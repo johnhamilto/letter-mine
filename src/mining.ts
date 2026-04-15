@@ -50,8 +50,6 @@ export class MiningPrompt {
   private ctx: OffscreenCanvasRenderingContext2D
   private currentWidth = 0
   private dpr = window.devicePixelRatio
-  /** True when the canvas needs repainting + GPU re-upload. */
-  private dirty = true
 
   constructor(options: MiningOptions) {
     this.onLetterMined = options.onLetterMined
@@ -153,7 +151,6 @@ export class MiningPrompt {
         pc.mined = true
         pc.mineTime = now
         this.cursorPos++
-        this.dirty = true
         this.onKeystroke?.()
       }
       return
@@ -169,11 +166,9 @@ export class MiningPrompt {
       }
 
       this.cursorPos++
-      this.dirty = true
       this.onKeystroke?.()
     } else {
       pc.mistakeTime = now
-      this.dirty = true
       this.onKeystroke?.()
     }
   }
@@ -190,7 +185,6 @@ export class MiningPrompt {
       pc.mined = true
       pc.mineTime = now
       this.cursorPos++
-      this.dirty = true
       this.onKeystroke?.()
       return
     }
@@ -202,7 +196,6 @@ export class MiningPrompt {
       this.onLetterMined(pc.char, pos.x, pos.y)
     }
     this.cursorPos++
-    this.dirty = true
     this.onKeystroke?.()
   }
 
@@ -230,32 +223,14 @@ export class MiningPrompt {
       this.scrollOffset = targetScrollY
     }
 
-    // Resize canvas if screen width changed (render at DPR scale for sharpness).
-    // source.update() at the bottom will pick up the new canvas dimensions automatically.
+    // Resize canvas if screen width changed (render at DPR scale for sharpness)
     const dpr = this.dpr
     const canvasHeight = MINING.lineHeight * 4
     if (this.currentWidth !== screenWidth) {
       this.currentWidth = screenWidth
       this.canvas.width = screenWidth * dpr
       this.canvas.height = canvasHeight * dpr
-      this.dirty = true
     }
-
-    // Scroll animation and mistake animations need per-frame redraws while active.
-    if (Math.abs(targetScrollY - this.scrollOffset) > 0.5) this.dirty = true
-    for (const line of this.lines) {
-      let stop = false
-      for (const c of line.chars) {
-        if (c.mistakeTime > 0 && now - c.mistakeTime < MINING.mistakeAnimMs) {
-          this.dirty = true
-          stop = true
-          break
-        }
-      }
-      if (stop) break
-    }
-
-    if (!this.dirty) return
 
     const ctx = this.ctx
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
@@ -347,7 +322,6 @@ export class MiningPrompt {
       },
       true,
     )
-    this.dirty = false
   }
 
   destroy() {
