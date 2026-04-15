@@ -13,6 +13,9 @@ export interface Settings {
   perfMonitorEnabled: boolean
   muted: boolean
   apprenticeFx: DetachStyle
+  musicEnabled: boolean
+  /** 0..1 */
+  musicVolume: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -20,6 +23,8 @@ export const DEFAULT_SETTINGS: Settings = {
   perfMonitorEnabled: false,
   muted: false,
   apprenticeFx: 'fade-drift',
+  musicEnabled: true,
+  musicVolume: 0.1,
 }
 
 export interface GameState {
@@ -70,6 +75,10 @@ function parseSettings(v: unknown): Settings {
   if (typeof obj.perfMonitorEnabled === 'boolean') out.perfMonitorEnabled = obj.perfMonitorEnabled
   if (typeof obj.muted === 'boolean') out.muted = obj.muted
   if (isDetachStyle(obj.apprenticeFx)) out.apprenticeFx = obj.apprenticeFx
+  if (typeof obj.musicEnabled === 'boolean') out.musicEnabled = obj.musicEnabled
+  if (typeof obj.musicVolume === 'number' && Number.isFinite(obj.musicVolume)) {
+    out.musicVolume = Math.max(0, Math.min(1, obj.musicVolume))
+  }
   return out
 }
 

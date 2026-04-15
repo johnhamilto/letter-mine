@@ -86,10 +86,34 @@ function SettingsDrawer(props: SettingsProps) {
               <label class="settings-toggle">
                 <input
                   type="checkbox"
-                  checked={settings.muted}
-                  onChange={(e) => onChange({ muted: e.currentTarget.checked })}
+                  checked={!settings.muted}
+                  onChange={(e) => onChange({ muted: !e.currentTarget.checked })}
                 />
-                <span>Mute sound</span>
+                <span>Sound effects</span>
+              </label>
+              <label class="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={settings.musicEnabled}
+                  onChange={(e) => onChange({ musicEnabled: e.currentTarget.checked })}
+                />
+                <span>Background music</span>
+              </label>
+              <label class="settings-slider">
+                <span class="settings-slider-label">
+                  Music volume <span class="settings-slider-value">{Math.round(settings.musicVolume * 100)}%</span>
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round(settings.musicVolume * 100)}
+                  disabled={!settings.musicEnabled}
+                  onInput={(e) =>
+                    onChange({ musicVolume: Number(e.currentTarget.value) / 100 })
+                  }
+                />
               </label>
             </div>
 

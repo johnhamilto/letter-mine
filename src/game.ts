@@ -19,6 +19,8 @@ import { MarkovGenerator, type MarkovData } from './markov'
 import { SoundManager } from './sound'
 import { PerfMonitor } from './perf-monitor'
 import { DetachFx } from './detach-fx'
+import { MusicPlayer } from './music'
+import { showNowPlaying } from './now-playing'
 import { makeText } from './pixi-text'
 import { SCALE, COLORS, FIXED_DT, MAX_SUBSTEPS, FOREGROUND_MS, BASIN, MINING } from './constants'
 import type {
@@ -50,6 +52,7 @@ export class Game {
   shelf!: Shelf
   renderer: LetterRenderer
   private detachFx: DetachFx
+  private music!: MusicPlayer
   economy: Economy
   hud: Hud
   dictionary: Record<string, DictionaryEntry> = {}
@@ -148,6 +151,17 @@ export class Game {
       this.settings = { ...DEFAULT_SETTINGS, ...saved.settings }
     }
     this.sound.muted = this.settings.muted
+
+    this.music = new MusicPlayer({
+      volume: this.settings.musicVolume,
+      enabled: this.settings.musicEnabled,
+      baseUrl: import.meta.env.BASE_URL ?? '/',
+    })
+    this.music.onTrackChange = (track) => {
+      if (this.settings.musicEnabled) showNowPlaying(track)
+    }
+    this.installMusicGestureGate()
+    this.installVisibilityPause()
 
     // Perf monitor (optional, user-toggled)
     this.perfMonitor = new PerfMonitor(() => this.letters.length)
@@ -664,8 +678,27 @@ export class Game {
     if (patch.perfMonitorEnabled !== undefined) {
       this.perfMonitor.enabled = patch.perfMonitorEnabled
     }
+    if (patch.musicVolume !== undefined) this.music.setVolume(patch.musicVolume)
+    if (patch.musicEnabled !== undefined) this.music.setEnabled(patch.musicEnabled)
     saveState(this.buildSaveState())
     this.renderSettingsUI()
+  }
+
+  private installMusicGestureGate() {
+    const trigger = () => {
+      this.music.start()
+      window.removeEventListener('keydown', trigger)
+      window.removeEventListener('pointerdown', trigger)
+    }
+    window.addEventListener('keydown', trigger)
+    window.addEventListener('pointerdown', trigger)
+  }
+
+  private installVisibilityPause() {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.music.pause()
+      else this.music.resume()
+    })
   }
 
   openDictionary() {

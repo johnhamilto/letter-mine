@@ -525,6 +525,94 @@ html, body {
   cursor: pointer;
 }
 
+.settings-toggle + .settings-toggle {
+  margin-top: 6px;
+}
+
+.settings-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  font-family: 'Playfair Display', serif;
+  font-size: 14px;
+  color: #2C2416;
+  user-select: none;
+}
+
+.settings-slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.settings-slider-value {
+  font-size: 12px;
+  color: #9E8E76;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-slider input[type="range"] {
+  width: 100%;
+  accent-color: #6B4423;
+  cursor: pointer;
+}
+
+.settings-slider input[type="range"]:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ── Now playing ── */
+
+.now-playing {
+  position: fixed;
+  bottom: 18px;
+  left: 20px;
+  font-family: 'Playfair Display', serif;
+  color: #2C2416;
+  background: rgba(245, 240, 232, 0.92);
+  border: 1px solid #C4B69C;
+  border-left: 3px solid #6B4423;
+  border-radius: 3px;
+  padding: 8px 14px 10px;
+  min-width: 180px;
+  max-width: 280px;
+  z-index: 6;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transform: translateX(-12px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.now-playing.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.now-playing .np-label {
+  font-size: 10px;
+  font-weight: bold;
+  color: #9E8E76;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.now-playing .np-title {
+  font-size: 15px;
+  font-weight: bold;
+  line-height: 1.2;
+}
+
+.now-playing .np-artist {
+  font-size: 12px;
+  font-style: italic;
+  color: #6B4423;
+  margin-top: 2px;
+}
+
 /* ── Dictionary button ── */
 
 .dict-btn {
